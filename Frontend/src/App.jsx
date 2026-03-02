@@ -11,8 +11,12 @@ function App() {
 
   const systemStatus = state?.system_status || "IDLE";
   const isRunning = systemStatus === "RUNNING";
+  const isStarting = systemStatus === "STARTING";
+  const isStopping = systemStatus === "STOPPING";
+  const isTransitioning = isStarting || isStopping;
 
   const handleStartStop = async () => {
+    if (isTransitioning) return;
     try {
       const endpoint = isRunning ? "/api/system/stop" : "/api/system/start";
       await fetch(`${API_BASE}${endpoint}`, { method: "POST" });
@@ -35,26 +39,55 @@ function App() {
       <header className="header">
         <div className="header-title">
           <div
-            className={`logo-dot ${systemStatus === "RUNNING" ? "animate-pulse-glow" : ""}`}
+            className={`logo-dot ${
+              isRunning
+                ? "animate-pulse-glow"
+                : isTransitioning
+                  ? "animate-spin-dot"
+                  : ""
+            }`}
           />
           <h1>WalkSense</h1>
           <span
-            className="badge"
+            className={`badge ${isTransitioning ? "badge-transitioning" : ""}`}
             style={{
-              background:
-                systemStatus === "RUNNING"
-                  ? "var(--accent-green-dim)"
-                  : "var(--bg-card)",
-              color:
-                systemStatus === "RUNNING"
-                  ? "var(--accent-green)"
-                  : "var(--text-muted)",
-              border:
-                systemStatus === "RUNNING"
-                  ? "1px solid rgba(0,200,83,0.3)"
-                  : "1px solid var(--border-subtle)",
+              background: isRunning
+                ? "var(--accent-green-dim)"
+                : isStarting
+                  ? "var(--accent-cyan-dim)"
+                  : isStopping
+                    ? "var(--accent-amber-dim)"
+                    : "var(--bg-card)",
+              color: isRunning
+                ? "var(--accent-green)"
+                : isStarting
+                  ? "var(--accent-cyan)"
+                  : isStopping
+                    ? "var(--accent-amber)"
+                    : "var(--text-muted)",
+              border: isRunning
+                ? "1px solid rgba(0,200,83,0.3)"
+                : isStarting
+                  ? "1px solid rgba(0,229,255,0.3)"
+                  : isStopping
+                    ? "1px solid rgba(255,171,0,0.3)"
+                    : "1px solid var(--border-subtle)",
             }}
           >
+            {isStarting && (
+              <svg
+                className="spin-icon"
+                width="10"
+                height="10"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3"
+                strokeLinecap="round"
+              >
+                <path d="M12 2a10 10 0 0 1 10 10" />
+              </svg>
+            )}
             {systemStatus}
           </span>
         </div>

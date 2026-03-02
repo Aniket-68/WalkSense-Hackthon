@@ -270,22 +270,42 @@ class SystemManager:
 
     def start(self):
         """Start the processing pipeline."""
-        if self._running:
+        if self._running or self._system_status == "STARTING":
             return
 
-        if self._detector is None:
-            self._init_components()
+        self._system_status = "STARTING"
+        logger.info("[SystemManager] System starting — loading components...")
 
-        self._running = True
-        self._system_status = "RUNNING"
-        self._loop_thread = threading.Thread(target=self._main_loop, daemon=True)
-        self._loop_thread.start()
-        logger.info("[SystemManager] Pipeline started")
+        # Run heavy init in a thread so the API responds immediately
+        threading.Thread(target=self._start_async, daemon=True).start()
+
+    def _start_async(self):
+        """Background thread that loads components then starts the pipeline."""
+        try:
+            # Re-init if components were never loaded, or if camera was
+            # released after a previous stop (the finally block in
+            # _main_loop sets self._camera = None).
+            needs_init = (self._detector is None or
+                          (self._camera is None and self._camera_mode != "browser"))
+            if needs_init:
+                self._init_components()
+
+            self._running = True
+            self._system_status = "RUNNING"
+            self._loop_thread = threading.Thread(target=self._main_loop, daemon=True)
+            self._loop_thread.start()
+            logger.info("[SystemManager] Pipeline started")
+        except Exception as e:
+            logger.error(f"[SystemManager] Failed to start: {e}")
+            import traceback
+            traceback.print_exc()
+            self._system_status = "ERROR"
+            self._running = False
 
     def stop(self):
         """Stop the processing pipeline."""
+        self._system_status = "STOPPING"
         self._running = False
-        self._system_status = "IDLE"
 
         # Reset pipeline states
         for key in self._pipeline_state:
@@ -299,6 +319,7 @@ class SystemManager:
         if hasattr(self, '_llm_worker') and self._llm_worker:
             self._llm_worker.stop()
 
+        self._system_status = "IDLE"
         logger.info("[SystemManager] Pipeline stopped")
 
     def submit_query(self, text: str):

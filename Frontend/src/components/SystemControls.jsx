@@ -5,24 +5,23 @@ export default function SystemControls({ state, onStartStop }) {
   const [loading, setLoading] = useState(false);
   const systemStatus = state?.system_status || "IDLE";
   const isRunning = systemStatus === "RUNNING";
+  const isStarting = systemStatus === "STARTING";
+  const isStopping = systemStatus === "STOPPING";
+  const isTransitioning = isStarting || isStopping;
   const isMuted = state?.muted || false;
 
   const handleToggle = async () => {
-    if (onStartStop) {
-      // Use the prop handler if provided (for keyboard shortcuts)
-      onStartStop();
-    } else {
-      // Fallback to direct API call
-      setLoading(true);
-      try {
-        const endpoint = isRunning ? "/api/system/stop" : "/api/system/start";
-        await fetch(`${API_BASE}${endpoint}`, { method: "POST" });
-      } catch (err) {
-        console.error("Toggle failed:", err);
-      } finally {
-        setLoading(false);
-      }
+    if (isTransitioning) return;
+    setLoading(true);
+    try {
+      const endpoint = isRunning ? "/api/system/stop" : "/api/system/start";
+      await fetch(`${API_BASE}${endpoint}`, { method: "POST" });
+    } catch (err) {
+      console.error("Toggle failed:", err);
+    } finally {
+      setLoading(false);
     }
+    if (onStartStop) onStartStop();
   };
 
   const handleMute = async () => {
@@ -33,29 +32,70 @@ export default function SystemControls({ state, onStartStop }) {
     }
   };
 
+  // Button label & style logic
+  let btnClass = "start";
+  let btnLabel = "Start System";
+  let btnIcon = (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M8 5.14v14l11-7-11-7z" />
+    </svg>
+  );
+
+  if (isStarting) {
+    btnClass = "starting";
+    btnLabel = "Initializing…";
+    btnIcon = (
+      <svg
+        className="spin-icon"
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+      >
+        <path d="M12 2a10 10 0 0 1 10 10" />
+      </svg>
+    );
+  } else if (isStopping) {
+    btnClass = "stopping";
+    btnLabel = "Stopping…";
+    btnIcon = (
+      <svg
+        className="spin-icon"
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+      >
+        <path d="M12 2a10 10 0 0 1 10 10" />
+      </svg>
+    );
+  } else if (isRunning) {
+    btnClass = "stop";
+    btnLabel = "Stop System";
+    btnIcon = (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+        <rect x="6" y="5" width="4" height="14" rx="1" />
+        <rect x="14" y="5" width="4" height="14" rx="1" />
+      </svg>
+    );
+  }
+
   return (
     <div className="controls-container card">
       <button
-        className={`control-btn ${isRunning ? "stop" : "start"}`}
+        className={`control-btn ${btnClass}`}
         onClick={handleToggle}
-        disabled={loading}
+        disabled={isTransitioning || loading}
       >
-        {isRunning ? (
-          <>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="6" y="5" width="4" height="14" rx="1" />
-              <rect x="14" y="5" width="4" height="14" rx="1" />
-            </svg>
-            Stop System
-          </>
-        ) : (
-          <>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M8 5.14v14l11-7-11-7z" />
-            </svg>
-            {loading ? "Starting…" : "Start System"}
-          </>
-        )}
+        {btnIcon}
+        {btnLabel}
+        {isStarting && <span className="init-progress-bar" />}
       </button>
 
       <button

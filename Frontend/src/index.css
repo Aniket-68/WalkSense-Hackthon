@@ -776,6 +776,75 @@ body {
   color: var(--accent-amber);
 }
 
+/* ── Starting / Stopping transitional states ── */
+.control-btn.starting {
+  background: var(--accent-cyan-dim);
+  border-color: rgba(0, 229, 255, 0.3);
+  color: var(--accent-cyan);
+  position: relative;
+  overflow: hidden;
+  cursor: wait;
+}
+
+.control-btn.starting:hover {
+  background: rgba(0, 229, 255, 0.2);
+  box-shadow: var(--shadow-glow-cyan);
+}
+
+.control-btn.stopping {
+  background: var(--accent-amber-dim);
+  border-color: rgba(255, 171, 0, 0.3);
+  color: var(--accent-amber);
+  position: relative;
+  overflow: hidden;
+  cursor: wait;
+}
+
+.control-btn.stopping:hover {
+  background: rgba(255, 171, 0, 0.2);
+}
+
+/* Animated progress bar at bottom of the button */
+.init-progress-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  width: 100%;
+  background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
+  background-size: 200% 100%;
+  animation: init-shimmer 1.5s ease-in-out infinite;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+}
+
+@keyframes init-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Spinning dot in header during transitions */
+.logo-dot.animate-spin-dot {
+  background: var(--accent-cyan);
+  box-shadow: var(--shadow-glow-cyan);
+  animation: spin-dot 1.2s linear infinite;
+}
+
+@keyframes spin-dot {
+  0% { box-shadow: 0 0 8px rgba(0, 229, 255, 0.6), 0 0 16px rgba(0, 229, 255, 0.3); }
+  50% { box-shadow: 0 0 16px rgba(0, 229, 255, 0.9), 0 0 32px rgba(0, 229, 255, 0.5); }
+  100% { box-shadow: 0 0 8px rgba(0, 229, 255, 0.6), 0 0 16px rgba(0, 229, 255, 0.3); }
+}
+
+/* Badge pulse animation for transitioning states */
+.badge-transitioning {
+  animation: badge-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes badge-pulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
 /* ============================================
    PIPELINE MONITOR
    ============================================ */
@@ -827,6 +896,22 @@ body {
   background: var(--accent-cyan-dim);
   box-shadow: var(--shadow-glow-cyan);
   animation: pulse-glow 1.5s ease-in-out infinite;
+}
+
+.pipeline-node.loading .pipeline-node-icon {
+  border-color: rgba(0, 229, 255, 0.3);
+  background: var(--accent-cyan-dim);
+  animation: node-loading 1.8s ease-in-out infinite;
+}
+
+@keyframes node-loading {
+  0%, 100% { opacity: 0.4; border-color: rgba(0, 229, 255, 0.2); }
+  50%      { opacity: 1;   border-color: var(--accent-cyan); box-shadow: var(--shadow-glow-cyan); }
+}
+
+.pipeline-node.loading .pipeline-node-label {
+  color: var(--text-muted);
+  animation: badge-pulse 1.5s ease-in-out infinite;
 }
 
 .pipeline-node.error .pipeline-node-icon {
@@ -887,6 +972,23 @@ body {
 
 .pipeline-arrow.active::after {
   border-left-color: var(--accent-cyan);
+}
+
+/* ── Pipeline initializing banner ── */
+.pipeline-init-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 8px 16px;
+  margin-bottom: 10px;
+  background: linear-gradient(135deg, rgba(0, 229, 255, 0.08), rgba(0, 229, 255, 0.03));
+  border: 1px solid rgba(0, 229, 255, 0.2);
+  border-radius: var(--radius-sm);
+  color: var(--accent-cyan);
+  font-size: 0.78rem;
+  font-weight: 500;
+  animation: slide-up 0.3s ease-out;
 }
 
 /* ============================================
