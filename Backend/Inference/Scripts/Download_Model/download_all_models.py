@@ -114,8 +114,8 @@ def download_yolo(config: dict, force: bool = False):
     # Gather model names from config
     detector_cfg = config.get("detector", {})
     model_map = detector_cfg.get("models", {
-        "yolov8n": "models/yolo/yolov8n.pt",
-        "yolo11m": "models/yolo/yolo11m.pt",
+        "yolov8n": "Models/yolo/yolov8n.pt",
+        "yolo11m": "Models/yolo/yolo11m.pt",
     })
 
     success = True
@@ -175,7 +175,7 @@ def download_vlm(config: dict, force: bool = False):
     models_cfg   = vlm_cfg.get("models", {})
     model_cfg    = models_cfg.get(active_model, {})
     model_id     = model_cfg.get("model_id", "Qwen/Qwen2-VL-2B-Instruct")
-    local_name   = model_cfg.get("local_model_path", f"models/vlm/{active_model}")
+    local_name   = model_cfg.get("local_model_path", f"Models/vlm/{active_model}")
     save_dir     = VLM_DIR / Path(local_name).name
 
     _info(f"Active local model: {active_model} → {model_id}")
@@ -232,7 +232,7 @@ def download_llm(config: dict, force: bool = False):
     models_cfg   = llm_cfg.get("models", {})
     model_cfg    = models_cfg.get(active_model, {})
     model_id     = model_cfg.get("model_id", "microsoft/phi-2")
-    local_name   = model_cfg.get("local_model_path", f"models/llm/{active_model}")
+    local_name   = model_cfg.get("local_model_path", f"Models/llm/{active_model}")
     save_dir     = LLM_DIR / Path(local_name).name
 
     _info(f"Active local model: {active_model} → {model_id}")
@@ -431,7 +431,7 @@ def download_depth(config: dict, force: bool = False):
     models_cfg = depth_cfg.get("models", {
         "depth_anything_v2_small": {
             "model_id": "depth-anything/Depth-Anything-V2-Small",
-            "local_model_path": "models/depth/depth-anything-v2-small",
+            "local_model_path": "Models/depth/depth-anything-v2-small",
         }
     })
 
@@ -441,7 +441,7 @@ def download_depth(config: dict, force: bool = False):
     success = True
     for key, mcfg in targets.items():
         model_id   = mcfg.get("model_id", "")
-        local_path = mcfg.get("local_model_path", f"models/depth/{key}")
+        local_path = mcfg.get("local_model_path", f"Models/depth/{key}")
         save_dir   = DEPTH_DIR / Path(local_path).name
 
         if save_dir.exists() and any(save_dir.iterdir()):

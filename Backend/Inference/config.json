@@ -13,11 +13,11 @@
         "models": {
           "qwen2-vl-2b": {
             "model_id": "Qwen/Qwen2-VL-2B-Instruct",
-            "local_model_path": "models/vlm/qwen2-vl-2b"
+            "local_model_path": "Models/vlm/qwen2-vl-2b"
           },
           "qwen3-vl-4b": {
             "model_id": "Qwen/Qwen3-VL-4B",
-            "local_model_path": "models/vlm/qwen3-vl-4b"
+            "local_model_path": "Models/vlm/qwen3-vl-4b"
           }
         }
       },
@@ -85,11 +85,11 @@
         "models": {
           "phi-2": {
             "model_id": "microsoft/phi-2",
-            "local_model_path": "models/llm/phi-2"
+            "local_model_path": "Models/llm/phi-2"
           },
           "phi-4-mini": {
             "model_id": "microsoft/phi-4-mini-instruct",
-            "local_model_path": "models/llm/phi-4-mini"
+            "local_model_path": "Models/llm/phi-4-mini"
           }
         }
       },
@@ -163,11 +163,11 @@
         "volume": 1.0,
         "models": {
           "glow-tts": {
-            "model_path": "models/tts/glow-tts",
+            "model_path": "Models/tts/glow-tts",
             "vocoder": "univnet"
           },
           "vits": {
-            "model_path": "models/tts/vits",
+            "model_path": "Models/tts/vits",
             "vocoder": "default"
           }
         }
@@ -232,17 +232,17 @@
         "models": {
           "whisper-small": {
             "model_id": "openai/whisper-small",
-            "model_path": "models/stt/whisper-small",
+            "model_path": "Models/stt/whisper-small",
             "model_size": "small"
           },
           "whisper-medium": {
             "model_id": "openai/whisper-medium",
-            "model_path": "models/stt/whisper-medium",
+            "model_path": "Models/stt/whisper-medium",
             "model_size": "medium"
           },
           "whisper-large-v3": {
             "model_id": "openai/whisper-large-v3",
-            "model_path": "models/stt/whisper-large-v3",
+            "model_path": "Models/stt/whisper-large-v3",
             "model_size": "large-v3"
           }
         }
@@ -302,9 +302,9 @@
   "detector": {
     "active_model": "yolo11m",
     "models": {
-      "yolov8n": "models/yolo/yolov8n.pt",
-      "yolo11m": "models/yolo/yolo11m.pt",
-      "yolov11ft": "models/yolo/yolov11ft.pt"
+      "yolov8n": "Models/yolo/yolov8n.pt",
+      "yolo11m": "Models/yolo/yolo11m.pt",
+      "yolov11ft": "Models/yolo/yolov11ft.pt"
     },
     "confidence_threshold": 0.25,
     "device": "cuda"
@@ -315,27 +315,27 @@
     "models": {
       "depth_anything_v2_small": {
         "model_id": "depth-anything/Depth-Anything-V2-Small",
-        "local_model_path": "models/depth/depth-anything-v2-small",
+        "local_model_path": "Models/depth/depth-anything-v2-small",
         "type": "huggingface",
         "device": "cuda",
         "input_size": 518
       },
       "depth_anything_v2_base": {
         "model_id": "depth-anything/Depth-Anything-V2-Base",
-        "local_model_path": "models/depth/depth-anything-v2-base",
+        "local_model_path": "Models/depth/depth-anything-v2-base",
         "type": "huggingface",
         "device": "cuda",
         "input_size": 518
       },
       "midas_small": {
         "model_id": "Intel/dpt-hybrid-midas",
-        "local_model_path": "models/depth/dpt-hybrid-midas",
+        "local_model_path": "Models/depth/dpt-hybrid-midas",
         "type": "huggingface",
         "device": "cuda"
       },
       "midas_large": {
         "model_id": "Intel/dpt-large",
-        "local_model_path": "models/depth/dpt-large",
+        "local_model_path": "Models/depth/dpt-large",
         "type": "huggingface",
         "device": "cuda"
       }

@@ -3,10 +3,16 @@ import os
 from ultralytics import YOLO
 import shutil
 
-def download_yolo_model(model_name="yolo11m.pt", target_dir="models/yolo"):
+# Resolve Inference root directory
+INFERENCE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+def download_yolo_model(model_name="yolo11m.pt", target_dir=None):
     """
     Downloads a YOLO model weights file and moves it to the target directory.
+    target_dir defaults to Inference/Models/yolo.
     """
+    if target_dir is None:
+        target_dir = os.path.join(INFERENCE_DIR, "Models", "yolo")
     if not os.path.exists(target_dir):
         os.makedirs(target_dir, exist_ok=True)
         

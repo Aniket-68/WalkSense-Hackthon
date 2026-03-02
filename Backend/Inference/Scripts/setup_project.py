@@ -59,18 +59,23 @@ def download_yolo_logic(python_path, config):
     """Consolidated YOLO download logic pull from config.json."""
     print("[YOLO] Checking YOLO models...")
     
+    # Resolve Inference root for absolute paths
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    inference_dir = os.path.dirname(script_dir)
+    
     yolo_config = config.get("detector", {})
     models_dict = yolo_config.get("models", {
-        "yolov8n": "models/yolo/yolov8n.pt",
-        "yolo11m": "models/yolo/yolo11m.pt"
+        "yolov8n": "Models/yolo/yolov8n.pt",
+        "yolo11m": "Models/yolo/yolo11m.pt"
     })
     
-    target_dir = "models/yolo"
+    target_dir = os.path.join(inference_dir, "Models", "yolo")
     os.makedirs(target_dir, exist_ok=True)
     
-    for model_alias, target_path in models_dict.items():
+    for model_alias, target_rel in models_dict.items():
         # Alias like 'yolo11m' might not have .pt, check logic
         model_name = f"{model_alias}.pt" if not model_alias.endswith(".pt") else model_alias
+        target_path = os.path.join(inference_dir, target_rel)
         
         if not os.path.exists(target_path):
             print(f"[YOLO] Downloading {model_name}...")
@@ -87,7 +92,11 @@ def download_whisper_logic(python_path, config):
     stt_config = config.get("stt", {}).get("providers", {}).get("whisper_local", {})
     model_size = stt_config.get("model_size", "base")
     
-    target_dir = "models/whisper"
+    # Resolve Inference root for absolute paths
+    script_dir_w = os.path.dirname(os.path.abspath(__file__))
+    inference_dir_w = os.path.dirname(script_dir_w)
+    
+    target_dir = os.path.join(inference_dir_w, "Models", "stt")
     os.makedirs(target_dir, exist_ok=True)
     
     # 1. Standard Whisper

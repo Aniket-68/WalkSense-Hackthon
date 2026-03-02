@@ -28,6 +28,9 @@ class Config:
         except Exception as e:
             logger.error(f"Config Error: {e}")
 
+    # Inference root directory (parent of Infrastructure/)
+    _inference_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
     @classmethod
     def get(cls, key_path, default=None):
         """
@@ -45,6 +48,16 @@ class Config:
             return val
         except (KeyError, TypeError):
             return default
+
+    @classmethod
+    def resolve_path(cls, relative_path: str) -> str:
+        """
+        Resolve a relative path from config.json to an absolute path
+        anchored at the Inference/ directory.
+        """
+        if os.path.isabs(relative_path):
+            return relative_path
+        return os.path.join(cls._inference_root, relative_path)
 
 # Initialize on import
 Config.load()

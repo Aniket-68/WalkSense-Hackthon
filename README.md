@@ -1,358 +1,370 @@
 # WalkSense 🚶‍♂️👁️
 
-> AI-Powered Assistive Navigation System for Visually Impaired Users
+> AI-Powered Real-Time Assistive Navigation System for Visually Impaired Users
 
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-%23EE4C2C.svg?logo=PyTorch&logoColor=white)](https://pytorch.org/)
+[![React](https://img.shields.io/badge/React-19.2-61DAFB?logo=react&logoColor=white)](https://react.dev/)
+[![PyTorch](https://img.shields.io/badge/PyTorch_2.5-CUDA_12.1-%23EE4C2C.svg?logo=PyTorch&logoColor=white)](https://pytorch.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-WalkSense is a real-time AI assistant that combines computer vision, natural language processing, and spatial awareness to help visually impaired users navigate safely and interact with their environment through voice.
+WalkSense is a real-time AI assistant that combines **computer vision**, **depth estimation**, **vision-language models**, and **natural language processing** to help visually impaired users navigate safely and interact with their environment through voice. It features a **React dashboard** for monitoring and a **FastAPI backend** that orchestrates the full AI pipeline.
 
-![WalkSense Architecture](docs/architecture_diagram.png)
+---
 
 ## 🌟 Key Features
 
-- **Real-time Object Detection**: YOLO-based detection at 30 FPS
-- **Intelligent Scene Understanding**: Vision-language models describe surroundings
-- **Natural Voice Interaction**: Ask questions, get instant answers
-- **Multi-tier Safety Alerts**: Critical hazards trigger immediate warnings
-- **Spatial Awareness**: Tracks objects across time and space
-- **Multi-modal Feedback**: Voice + haptic + LED/buzzer notifications
-- **Privacy-First**: 100% local processing, no cloud required
+- **Real-time Object Detection** — YOLO v8/v11 with CUDA acceleration
+- **Monocular Depth Estimation** — MiDaS / Depth Anything V2 for spatial awareness
+- **Intelligent Scene Understanding** — Qwen VLM describes surroundings contextually
+- **Natural Voice Interaction** — Ask questions via browser mic, get spoken answers
+- **LLM-Powered Reasoning** — Gemma / Phi models answer user queries with scene context
+- **Multi-tier Safety Alerts** — Critical hazards trigger immediate voice warnings
+- **Browser Camera Mode** — Stream camera from any device (supports cloud/EC2 deployment)
+- **Live Dashboard** — React + Vite frontend with real-time pipeline monitoring
+- **Multi-provider Support** — LM Studio, Ollama, HuggingFace, OpenAI, Azure, AWS, and more
+- **Privacy-First** — Fully local processing by default, no cloud required
+
+---
 
 ## 🏗️ Architecture
 
-WalkSense uses a **layered architecture** for modularity and extensibility:
+WalkSense uses a **layered architecture** with a FastAPI server orchestrating all components:
 
 ```
-┌─────────────────────────────────────────┐
-│       INTERACTION LAYER                 │
-│   (Voice I/O, Haptics, Audio)           │
-└───────────────┬─────────────────────────┘
-                ↓
-┌─────────────────────────────────────────┐
-│        FUSION LAYER                     │
-│   (Orchestration, Routing, State)       │
-└───────┬─────────────────┬───────────────┘
-        ↓                 ↓
-┌───────────────┐  ┌──────────────────────┐
-│  PERCEPTION   │  │   REASONING LAYER    │
-│  (YOLO, Cam)  │  │  (VLM, LLM)          │
-└───────────────┘  └──────────────────────┘
-        ↓                 ↓
-┌─────────────────────────────────────────┐
-│       INFRASTRUCTURE                    │
-│   (Config, Perf Tracking, Utils)        │
-└─────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│              REACT FRONTEND (Vite)               │
+│   Dashboard · Camera Feed · Voice Query · Logs   │
+└────────────────────┬─────────────────────────────┘
+                     │ REST + WebSocket
+┌────────────────────▼─────────────────────────────┐
+│           FastAPI SERVER (port 8080)             │
+│         SystemManager · Pipeline Loop            │
+└──┬──────────┬──────────┬──────────┬──────────────┘
+   ▼          ▼          ▼          ▼
+┌────────┐ ┌────────┐ ┌────────┐ ┌─────────────┐
+│PERCEPT.│ │REASON. │ │FUSION  │ │INTERACTION  │
+│Camera  │ │VLM     │ │Engine  │ │STT (Whisper)│
+│YOLO    │ │LLM     │ │Router  │ │TTS (pyttsx3)│
+│Depth   │ │        │ │State   │ │Audio Worker │
+│Alerts  │ │        │ │Context │ │Haptics/LED  │
+└────────┘ └────────┘ └────────┘ └─────────────┘
+   ▼          ▼          ▼          ▼
+┌──────────────────────────────────────────────────┐
+│             INFRASTRUCTURE                       │
+│   Config · Metrics · Performance · Sampler       │
+└──────────────────────────────────────────────────┘
 ```
 
-See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed layer descriptions.
+---
+
+## 📁 Project Structure
+
+```
+WalkSense-Hackthon/
+├── Backend/
+│   ├── API/
+│   │   ├── server.py              # FastAPI server (REST + WebSocket + MJPEG)
+│   │   └── manager.py             # SystemManager — pipeline orchestrator
+│   ├── Inference/
+│   │   ├── config.json            # All system configuration
+│   │   ├── Perception_Layer/      # Camera, YOLO detector, depth, safety rules
+│   │   ├── Reasoning_Layer/       # VLM (Qwen), LLM (Gemma/Phi)
+│   │   ├── Fusion_Layer/          # Orchestration, routing, state, context
+│   │   ├── Interaction_Layer/     # STT, TTS, audio, haptics, buzzer, LED
+│   │   ├── Infrastructure/        # Config loader, metrics, performance, sampler
+│   │   ├── Models/                # Downloaded AI model weights (git-ignored)
+│   │   ├── Scripts/               # Setup, model downloads, testing utilities
+│   │   └── Logs/                  # Runtime logs
+│   └── Requirements.txt           # Python dependencies
+├── Frontend/
+│   ├── src/
+│   │   ├── App.jsx                # Main app layout
+│   │   ├── components/
+│   │   │   ├── CameraFeed.jsx     # MJPEG camera display
+│   │   │   ├── BrowserCamera.jsx  # getUserMedia → WebSocket streaming
+│   │   │   ├── QueryDisplay.jsx   # Voice query recording & dialogue
+│   │   │   ├── PipelineMonitor.jsx# Real-time pipeline state
+│   │   │   ├── SystemControls.jsx # Start/Stop/Mute controls
+│   │   │   └── KeyboardShortcuts.jsx
+│   │   └── hooks/
+│   │       └── useWebSocket.js    # WebSocket connection hook
+│   ├── package.json
+│   └── vite.config.js
+├── Docs/                          # Architecture & metrics documentation
+├── Design.md                      # System design document
+├── Requirements.md                # Functional requirements
+└── README.md
+```
+
+---
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
-- **Python 3.10+**
-- **CUDA-capable GPU** (recommended for best performance)
-- **Microphone** for voice input
-- **Speakers** for audio output
+| Requirement                 | Details                                      |
+| --------------------------- | -------------------------------------------- |
+| **Python**                  | 3.10+                                        |
+| **Node.js**                 | 18+ (for frontend)                           |
+| **CUDA GPU**                | Recommended (RTX 3060+ for best performance) |
+| **FFmpeg**                  | Required for audio processing                |
+| **LM Studio** or **Ollama** | For VLM/LLM inference                        |
 
-### Installation
+### 1. Clone the Repository
 
-1. **Clone the repository**:
 ```bash
-git clone https://github.com/yourusername/WalkSense.git
-cd WalkSense
+git clone https://github.com/Aniket-68/WalkSense-Hackthon.git
+cd WalkSense-Hackthon
 ```
 
-2. **Run automated setup** (Windows):
-```bash
-setup.bat
-```
+### 2. Backend Setup
 
-Or manually:
 ```bash
-# Create virtual environment
+cd Backend
+
+# Create & activate virtual environment
 python -m venv venv
-venv\Scripts\activate  # Windows
-# source venv/bin/activate  # Linux/Mac
+venv\Scripts\activate          # Windows
+# source venv/bin/activate     # Linux/Mac
 
 # Install dependencies
-pip install -r requirements.txt
+pip install -r Requirements.txt
 
-# Install CUDA PyTorch (for GPU acceleration)
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+# Install CUDA PyTorch (GPU acceleration)
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 ```
 
-3. **Download AI models**:
+### 3. Download AI Models
+
 ```bash
-python scripts/setup_project.py
+cd Inference
+python Scripts/setup_project.py
+
+# Or download individual models:
+python Scripts/Download_Model/download_yolo.py
 ```
 
-This will download:
-- YOLO detection models (YOLOv8n, YOLO11m)
-- Whisper speech recognition models
-- Configuration templates
+This downloads:
 
-### Configuration
+- **YOLO** detection models (YOLOv8n, YOLO11m)
+- **Whisper** speech recognition (small/medium/large)
+- **Depth** estimation (MiDaS, Depth Anything V2)
+- **VLM/LLM** weights (if using local providers)
 
-Edit `config.json` to customize:
+### 4. Frontend Setup
 
-```json
-{
-  "vlm": {
-    "active_provider": "lm_studio",  // or "huggingface", "ollama"
-    "providers": { ... }
-  },
-  "llm": {
-    "active_provider": "ollama",  // For query answering
-    "providers": { ... }
-  },
-  "detector": {
-    "device": "cuda",  // Use GPU acceleration
-    "active_model": "yolov8n"
-  },
-  "stt": {
-    "active_provider": "whisper_local"  // Local Whisper
-  }
+```bash
+cd Frontend
+npm install
+```
+
+### 5. Start External AI Services
+
+**Option A — LM Studio (recommended for VLM):**
+
+1. Download [LM Studio](https://lmstudio.ai/)
+2. Load `Qwen3-VL-4B` (or any vision-capable model)
+3. Start server on port **1234**
+
+**Option B — Ollama (recommended for LLM):**
+
+```bash
+ollama pull gemma3:270m
+ollama serve                    # Runs on port 11434
+```
+
+### 6. Launch
+
+```bash
+# Terminal 1 — Backend (from Backend/ directory)
+python -m API.server            # Starts on http://localhost:8080
+
+# Terminal 2 — Frontend (from Frontend/ directory)
+npm run dev                     # Starts on http://localhost:5173
+```
+
+Open **http://localhost:5173** in your browser. Click **Start** to begin the pipeline.
+
+---
+
+## ⚙️ Configuration
+
+All settings are in [`Backend/Inference/config.json`](Backend/Inference/config.json):
+
+### AI Providers
+
+Each AI component supports **multiple providers** — switch by changing `active_provider`:
+
+| Component    | Providers                                                                     | Default       |
+| ------------ | ----------------------------------------------------------------------------- | ------------- |
+| **VLM**      | LM Studio, Ollama, Local HuggingFace, OpenAI, Azure, AWS Bedrock, Anthropic   | `lm_studio`   |
+| **LLM**      | Ollama, LM Studio, Local HuggingFace, OpenAI, Azure, AWS Bedrock, Together AI | `ollama`      |
+| **STT**      | Local Whisper (faster-whisper), OpenAI, Google, Azure, AWS                    | `local`       |
+| **TTS**      | pyttsx3, Coqui, OpenAI, Google, Azure, AWS Polly                              | `local`       |
+| **Depth**    | MiDaS Small/Large, Depth Anything V2 Small/Base                               | `midas_small` |
+| **Detector** | YOLOv8n, YOLO11m, Custom fine-tuned                                           | `yolo11m`     |
+
+### Camera Modes
+
+```jsonc
+"camera": {
+  "mode": "hardware"    // "hardware" | "simulation" | "browser"
 }
 ```
 
-### Start LM Studio (for VLM)
+- **hardware** — USB/built-in camera via OpenCV
+- **simulation** — Loop a video file for testing
+- **browser** — Frontend streams camera via WebSocket (ideal for cloud/EC2 deployment)
 
-1. Download [LM Studio](https://lmstudio.ai/)
-2. Load a vision-capable model (e.g., `Qwen2-VL-2B`)
-3. Start server on port 1234
-
-### Launch WalkSense
-
-```bash
-python -m scripts.run_enhanced_camera
-```
+---
 
 ## 🎮 Usage
 
-### Keyboard Controls
+### Dashboard Controls
 
-- **`S`**: Start/Resume system
-- **`L`**: Ask a question (triggers voice input)
-- **`M`**: Mute/Unmute audio
-- **`Q`**: Quit application
+| Button              | Action                                 |
+| ------------------- | -------------------------------------- |
+| **Start / Stop**    | Toggle the AI pipeline                 |
+| **🎤 Hold to Talk** | Record voice query and send to backend |
+| **Mute**            | Toggle audio output                    |
 
-### Voice Interaction
+### Voice Interaction Examples
 
-**Press `L`** and speak your question:
-
-```
-User: "What's in front of me?"
-WalkSense: "A person standing 2 meters ahead with a blue backpack"
-
-User: "Is there a chair nearby?"
-WalkSense: "Yes, a brown chair to your left"
-
-User: "Can I cross the street?"
-WalkSense: "Wait! I see a car approaching from the right"
-```
-
-### Safety Alerts
-
-The system automatically announces hazards:
-
-- **Critical**: `"Danger! Car detected ahead. Stop immediately."`
-- **Warning**: `"Warning! Pole ahead. Proceed carefully."`
-- **Info**: `"Chair nearby"`
-
-## 📖 Documentation
-
-- **[Architecture Guide](ARCHITECTURE.md)**: System design and data flow
-- **[Performance Metrics](docs/PERFORMANCE_METRICS.md)**: Comprehensive performance benchmarks
-- **[Quality Metrics](docs/QUALITY_METRICS.md)**: User experience and quality analysis
-- **[Latency Analysis](docs/LATENCY.md)**: Detailed latency breakdown and optimization
-- **[Configuration Guide](ENHANCED_SYSTEM.md)**: Detailed config options
-- **[Performance Tuning](#performance-optimization)**: Optimize for your hardware
-
-## 🛠️ Development
-
-### Project Structure
+Hold the microphone button and speak:
 
 ```
-WalkSense/
-├── perception_layer/       # Camera, YOLO, safety rules
-├── reasoning_layer/        # VLM, LLM AI models
-├── fusion_layer/          # Central orchestration
-├── interaction_layer/     # Voice, audio, haptics
-├── infrastructure/        # Config, logging, utils
-├── scripts/              # Entry points, setup
-├── models/               # Downloaded AI weights
-├── config.json           # System configuration
-└── docs/                 # Documentation
+You:       "What do you see in front of me?"
+WalkSense: "I see a person standing about 2 meters ahead wearing a blue jacket,
+            and a wooden bench to your right."
+
+You:       "Is it safe to cross?"
+WalkSense: "I can see a car approaching from the left. Please wait."
 ```
 
-### Adding Features
+### Automatic Safety Alerts
 
-#### New STT Provider
+The system continuously monitors and announces hazards:
 
-1. Add config to `config.json`:
-```json
-"stt": {
-  "providers": {
-    "my_provider": {
-      "api_key": "...",
-      "model": "..."
-    }
-  }
-}
-```
+| Priority        | Example                                                   |
+| --------------- | --------------------------------------------------------- |
+| 🔴 **Critical** | _"Danger! Car detected ahead. Stop immediately."_         |
+| 🟡 **Warning**  | _"Warning! Pole ahead at 1.5 meters. Proceed carefully."_ |
+| 🟢 **Info**     | _"Chair detected to your left."_                          |
 
-2. Implement in `interaction_layer/stt.py`:
-```python
-def _recognize_my_provider(self, audio):
-    # Your implementation
-    return transcribed_text
-```
+---
 
-#### New Safety Rule
+## 🔌 API Reference
 
-Edit `perception_layer/rules.py`:
-```python
-CRITICAL_OBJECTS = {
-    "knife", "gun", "fire",
-    "my_new_hazard"  # Add here
-}
-```
+The FastAPI backend exposes these endpoints:
 
-## ⚡ Performance Optimization
+| Method | Endpoint            | Description                            |
+| ------ | ------------------- | -------------------------------------- |
+| `POST` | `/api/system/start` | Start the AI pipeline                  |
+| `POST` | `/api/system/stop`  | Stop the AI pipeline                   |
+| `GET`  | `/api/system/state` | Current pipeline state (JSON)          |
+| `POST` | `/api/voice-query`  | Upload audio → transcribe → LLM answer |
+| `POST` | `/api/text-query`   | Send text query → LLM answer           |
+| `GET`  | `/api/camera/feed`  | MJPEG video stream                     |
+| `WS`   | `/ws`               | Real-time pipeline state updates       |
+| `WS`   | `/ws/camera`        | Browser camera frame ingestion         |
 
-### GPU Acceleration
+---
 
-Enable CUDA for all components:
+## ⚡ Performance
 
-```json
-{
-  "detector": { "device": "cuda" },
-  "stt": { "providers": { "whisper_local": { "device": "cuda" } } }
-}
-```
+### Expected Latency (CUDA GPU)
 
-### Latency Reduction
+| Component            | RTX 4060  | CPU (i7)    |
+| -------------------- | --------- | ----------- |
+| YOLO Detection       | ~300ms    | ~800ms      |
+| Depth Estimation     | ~100ms    | ~500ms      |
+| VLM Description      | ~2-3s     | ~8-10s      |
+| STT (Whisper small)  | ~500ms    | ~2-3s       |
+| LLM Reasoning        | ~1-2s     | ~3-5s       |
+| **End-to-End Query** | **~5-8s** | **~15-20s** |
 
-1. **Use smaller models**:
-   - YOLOv8n instead of YOLO11m
-   - Whisper base instead of large
-   - Smaller LLM (Gemma3:270m, Phi-4)
+### Optimization Tips
 
-2. **Adjust sampling**:
-```json
-"perception": {
-  "sampling_interval": 150  // Run VLM every 150 frames (~5s)
-}
-```
+1. **Use smaller models** — YOLOv8n, Whisper small, Gemma3:270m
+2. **Adjust VLM sampling** — `perception.sampling_interval` controls how often VLM runs (default: every 150 frames)
+3. **Enable redundancy filtering** — `safety.suppression.enabled: true` avoids repeating alerts
+4. **GPU for all components** — Set `"device": "cuda"` in detector, STT, and depth configs
 
-3. **Enable redundancy filtering**:
-```json
-"safety": {
-  "suppression": {
-    "enabled": true,
-    "redundancy_threshold": 0.6
-  }
-}
-```
-
-### Expected Performance
-
-| Component | GPU (RTX 4060) | CPU (i7) |
-|-----------|----------------|----------|
-| YOLO Detection | ~300ms | ~800ms |
-| VLM Description | ~2-3s | ~8-10s |
-| STT (Whisper) | ~500ms | ~2-3s |
-| LLM Reasoning | ~1-2s | ~3-5s |
-| **End-to-End Query** | ~5-8s | ~15-20s |
+---
 
 ## 🐛 Troubleshooting
 
 ### CUDA Not Available
 
 ```bash
-pip uninstall torch
-pip install torch --index-url https://download.pytorch.org/whl/cu124
+pip uninstall torch torchvision torchaudio
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 ```
 
-### STT Not Working
+Verify: `python -c "import torch; print(torch.cuda.is_available())"`
 
-1. Check microphone permissions
-2. List available mics: `python scripts/check_mics.py`
-3. Update `config.json` with correct mic ID:
-```json
-"microphone": { "hardware": { "id": 2 } }
-```
+### VLM Not Responding
 
-### VLM Connection Failed
+1. Ensure **LM Studio** is running with a vision model loaded
+2. Check the server URL: `curl http://localhost:1234/v1/models`
+3. Or switch to Ollama: set `vlm.active_provider` to `"ollama"` in config
 
-1. Ensure LM Studio is running
-2. Verify model is loaded
-3. Check port (default: 1234)
-4. Test: `curl http://localhost:1234/v1/models`
+### STT Not Transcribing / Clipping Words
 
-### Audio Not Playing
+1. Ensure FFmpeg is installed: `ffmpeg -version`
+2. Allow microphone access in your browser
+3. Check logs for `[STT]` messages in the backend terminal
 
-Check `interaction_layer/audio_worker.py` path in logs.
+### Frontend Can't Connect
 
-## 📊 Monitoring
+1. Verify backend is running on port **8080**
+2. Check CORS — backend allows all origins by default
+3. Check browser console for WebSocket errors
 
-### Performance Logs
-
-```bash
-# View real-time performance
-tail -f logs/performance.log
-
-# Generate visualization (on exit)
-# Creates: plots/performance_summary.png
-```
-
-### Metrics Tracked
-
-- Frame processing time
-- YOLO inference latency
-- VLM description time
-- LLM reasoning time
-- STT transcription speed
-
-## 🤝 Contributing
-
-Contributions welcome! Key principles:
-
-1. **Layer Separation**: Keep perception, reasoning, and interaction decoupled
-2. **Configuration-Driven**: Use `config.json` for tunable parameters
-3. **Type Safety**: Include type hints and docstrings
-4. **Logging**: Use `loguru` for all output
-5. **Performance**: Track latency for major operations
-
-See [API_REFERENCE.md](docs/API_REFERENCE.md) for development guidelines.
+---
 
 ## 🔒 Privacy & Security
 
-- **Local-First**: All processing runs on-device by default
-- **No Telemetry**: No data collection or external communication
-- **No Storage**: Video frames are not saved
-- **Optional Cloud**: Users can opt-in to cloud APIs (OpenAI Whisper, etc.)
+- **Local-First** — All processing runs on-device by default
+- **No Telemetry** — Zero data collection or external communication
+- **No Storage** — Video frames are processed in memory, never saved to disk
+- **Optional Cloud** — Users can opt-in to cloud APIs (OpenAI, Azure, AWS) via config
 
-## 📝 License
+---
 
-This project is licensed under the MIT License - see [LICENSE](LICENSE) file for details.
+## 🤝 Contributing
+
+1. **Layer Separation** — Keep perception, reasoning, and interaction decoupled
+2. **Configuration-Driven** — Add tunable parameters to `config.json`
+3. **Type Safety** — Include type hints and docstrings
+4. **Logging** — Use `loguru` for structured logging
+5. **Performance** — Track latency for any new pipeline operations
+
+---
 
 ## 🙏 Acknowledgments
 
 Built with:
-- [Ultralytics YOLO](https://github.com/ultralytics/ultralytics) - Object detection
-- [faster-whisper](https://github.com/guillaumekln/faster-whisper) - Speech recognition
-- [Qwen2-VL](https://huggingface.co/Qwen) - Vision-language understanding
-- [LM Studio](https://lmstudio.ai/) - Local LLM inference
-- [loguru](https://github.com/Delgan/loguru) - Logging
+
+- [Ultralytics YOLO](https://github.com/ultralytics/ultralytics) — Object detection
+- [faster-whisper](https://github.com/guillaumekln/faster-whisper) — Speech recognition
+- [Qwen-VL](https://huggingface.co/Qwen) — Vision-language understanding
+- [LM Studio](https://lmstudio.ai/) / [Ollama](https://ollama.com/) — Local LLM inference
+- [MiDaS](https://github.com/isl-org/MiDaS) / [Depth Anything](https://github.com/DepthAnything/Depth-Anything-V2) — Depth estimation
+- [FastAPI](https://fastapi.tiangolo.com/) — Backend API server
+- [React](https://react.dev/) + [Vite](https://vite.dev/) — Frontend dashboard
+- [loguru](https://github.com/Delgan/loguru) — Logging
+
+---
+
+## 📝 License
+
+This project is licensed under the MIT License — see [LICENSE](LICENSE) for details.
 
 ## 📧 Contact
 
-For questions or feedback:
-- **GitHub Issues**: [github.com/Aniket-68/WalkSense/issues](https://github.com/Aniket-68/WalkSense/issues)
+- **GitHub Issues**: [github.com/Aniket-68/WalkSense-Hackthon/issues](https://github.com/Aniket-68/WalkSense-Hackthon/issues)
 - **Email**: aniketchauhan0608@gmail.com
 
 ---

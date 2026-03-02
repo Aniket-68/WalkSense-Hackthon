@@ -11,7 +11,10 @@ class YoloDetector:
         """
         if model_path is None:
             active_model = Config.get("detector.active_model", "yolov8n")
-            model_path = Config.get(f"detector.models.{active_model}", "models/yolo/yolov8n.pt")
+            model_path = Config.get(f"detector.models.{active_model}", "Models/yolo/yolov8n.pt")
+        
+        # Resolve relative path from Inference/ root so it works regardless of cwd
+        model_path = Config.resolve_path(model_path)
         
         self.model = YOLO(model_path)
         
