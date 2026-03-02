@@ -1,0 +1,63 @@
+=== MICROPHONES ===
+ID 0: Microsoft Sound Mapper - Input
+ID 1: Microphone (Iriun Webcam)
+ID 2: Headset (OnePlus Nord Buds 2r)
+ID 3: Microphone Array (Realtek(R) Au
+ID 4: Microsoft Sound Mapper - Output
+ID 5: Headphones (OnePlus Nord Buds 2
+ID 6: Speakers (Realtek(R) Audio)
+ID 7: Primary Sound Capture Driver
+ID 8: Microphone (Iriun Webcam)
+ID 9: Headset (OnePlus Nord Buds 2r)
+ID 10: Microphone Array (Realtek(R) Audio)
+ID 11: Primary Sound Driver
+ID 12: Headphones (OnePlus Nord Buds 2r)
+ID 13: Speakers (Realtek(R) Audio)
+ID 14: Headphones (OnePlus Nord Buds 2r)
+ID 15: Speakers (Realtek(R) Audio)
+ID 16: Headset (OnePlus Nord Buds 2r)
+ID 17: Microphone (Iriun Webcam)
+ID 18: Microphone Array (Realtek(R) Audio)
+ID 19: Headphones (Realtek HD Audio 2nd output)
+ID 20: Microphone Array (Realtek HD Audio Mic Array input)
+ID 21: Speakers 1 (Realtek HD Audio output with SST)
+ID 22: Speakers 2 (Realtek HD Audio output with SST)
+ID 23: PC Speaker (Realtek HD Audio output with SST)
+ID 24: Microphone (Realtek HD Audio Mic input)
+ID 25: Stereo Mix (Realtek HD Audio Stereo input)
+ID 26: Headset (@System32\drivers\bthhfenum.sys,#2;%1 Hands-Free%0
+;(Airdopes 138 Pro))
+ID 27: Headset (@System32\drivers\bthhfenum.sys,#2;%1 Hands-Free%0
+;(Airdopes 138 Pro))
+ID 28: Headphones ()
+ID 29: Speakers (Nahimic Wave Speaker)
+ID 30: Headphones ()
+ID 31: Speakers (Nahimic Easy Surround)
+ID 32: Headphones ()
+ID 33: Speakers ()
+ID 34: Headset (@System32\drivers\bthhfenum.sys,#2;%1 Hands-Free%0
+;(BassX ANC))
+ID 35: Headset (@System32\drivers\bthhfenum.sys,#2;%1 Hands-Free%0
+;(BassX ANC))
+ID 36: Speakers (Nahimic mirroring Wave Speaker)
+ID 37: Headset (@System32\drivers\bthhfenum.sys,#2;%1 Hands-Free%0
+;(OnePlus Nord Buds 2r))
+ID 38: Headset (@System32\drivers\bthhfenum.sys,#2;%1 Hands-Free%0
+;(OnePlus Nord Buds 2r))
+ID 39: MIDI (Iriun Webcam Audio)
+ID 40: Speakers ()
+ID 41: Headphones ()
+ID 42: Headset (@System32\drivers\bthhfenum.sys,#2;%1 Hands-Free%0
+;(realme Buds Air6))
+ID 43: Headset (@System32\drivers\bthhfenum.sys,#2;%1 Hands-Free%0
+;(realme Buds Air6))
+ID 44: Output (@System32\drivers\bthhfenum.sys,#4;%1 Hands-Free HF Audio%0
+;(OnePlus Nord 3 5G))
+ID 45: Input (@System32\drivers\bthhfenum.sys,#4;%1 Hands-Free HF Audio%0
+;(OnePlus Nord 3 5G))
+ID 46: Input ()
+ID 47: Headphones ()
+
+=== CAMERAS ===
+ID 0: Available
+ID 1: Available

@@ -1,0 +1,84 @@
+# ===============================
+# System Requirements (Install Separately)
+# ===============================
+# FFmpeg (for audio processing): winget install FFmpeg
+# OR download from: https://ffmpeg.org/download.html
+
+# ===============================
+# Core ML / Deep Learning (CUDA 12.1)
+# ===============================
+# Install with: pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+torch>=2.1.0
+torchvision>=0.16.0
+torchaudio>=2.1.0
+
+# ===============================
+# Vision & Image Processing
+# ===============================
+opencv-python>=4.8.0
+Pillow>=10.0.0
+numpy>=1.24.0
+
+# ===============================
+# Vision-Language Model (Qwen)
+# ===============================
+transformers>=4.41.0
+accelerate>=0.28.0
+qwen-vl-utils>=0.0.8
+
+# ⚠ Optional (GPU + Linux only, needed for 4bit/8bit quantization)
+# bitsandbytes>=0.43.0
+
+# ===============================
+# Object Detection (YOLO)
+# ===============================
+ultralytics>=8.2.0
+
+# ===============================
+# Audio (TTS / STT)
+# ===============================
+pyttsx3>=2.90
+SpeechRecognition>=3.10.0
+
+# faster-whisper (Recommended - faster inference with CTranslate2)
+faster-whisper>=0.10.0
+
+# OR: Original OpenAI Whisper (slower but works everywhere)
+# openai-whisper>=20231117
+
+# ⚠ Optional: Coqui TTS (for local neural TTS models)
+# TTS>=0.22.0
+
+# ⚠ Install separately on Windows
+# pyaudio>=0.2.13
+
+# ⚠ Windows only (SAPI5 TTS fallback)
+# pywin32>=306
+
+# ===============================
+# HTTP / Networking
+# ===============================
+requests>=2.31.0
+
+# ===============================
+# Orchestration / Utilities
+# ===============================
+pydantic>=2.6.0
+loguru>=0.7.2
+
+# ===============================
+# Evaluation & Visualization
+# ===============================
+matplotlib>=3.8.0
+seaborn>=0.13.0
+pandas>=2.0.0
+scikit-learn>=1.4.0
+
+# ===============================
+# API Server
+# ===============================
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+python-multipart>=0.0.18
+google-generativeai>=0.8.0
+python-dotenv>=1.0.0

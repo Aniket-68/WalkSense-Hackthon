@@ -1,0 +1,359 @@
+{
+  "vlm": {
+    "active_provider": "lm_studio",
+    "providers": {
+      "lm_studio": {
+        "url": "http://localhost:1234/v1",
+        "model_id": "qwen/qwen3-vl-4b"
+      },
+      "local": {
+        "active_model": "qwen2-vl-2b",
+        "device": "cuda",
+        "precision": "4bit",
+        "models": {
+          "qwen2-vl-2b": {
+            "model_id": "Qwen/Qwen2-VL-2B-Instruct",
+            "local_model_path": "models/vlm/qwen2-vl-2b"
+          },
+          "qwen3-vl-4b": {
+            "model_id": "Qwen/Qwen3-VL-4B",
+            "local_model_path": "models/vlm/qwen3-vl-4b"
+          }
+        }
+      },
+      "huggingface_api": {
+        "model_id": "Qwen/Qwen2-VL-2B-Instruct",
+        "api_token_env": "HUGGINGFACE_TOKEN",
+        "device": "auto",
+        "precision": "4bit"
+      },
+      "ollama": {
+        "url": "http://localhost:11434",
+        "model_id": "llava"
+      },
+      "bedrock": {
+        "region": "us-east-1",
+        "model_id": "anthropic.claude-3-sonnet-20240229-v1:0",
+        "max_tokens": 1024,
+        "temperature": 0.7
+      },
+      "sagemaker": {
+        "region": "us-east-1",
+        "endpoint_name": "your-vlm-endpoint",
+        "content_type": "application/json",
+        "accept": "application/json"
+      },
+      "openai": {
+        "api_key_env": "OPENAI_API_KEY",
+        "model_id": "gpt-4-vision",
+        "max_tokens": 2048,
+        "temperature": 0.7
+      },
+      "azure_openai": {
+        "api_key_env": "AZURE_OPENAI_API_KEY",
+        "api_endpoint_env": "AZURE_OPENAI_ENDPOINT",
+        "deployment_name": "gpt-4-vision",
+        "api_version": "2024-02-15-preview"
+      },
+      "anthropic": {
+        "api_key_env": "ANTHROPIC_API_KEY",
+        "model_id": "claude-3-opus-20240229",
+        "max_tokens": 2048,
+        "temperature": 0.7
+      },
+      "replicate": {
+        "api_key_env": "REPLICATE_API_TOKEN",
+        "model_id": "andreasjansson/blip-2:4b32258c42e9efd3823740d7a9578ba8248dcf90"
+      }
+    }
+  },
+  "llm": {
+    "active_provider": "ollama",
+    "providers": {
+      "ollama": {
+        "url": "http://localhost:11434",
+        "model_id": "gemma3:270m"
+      },
+      "lm_studio": {
+        "url": "http://localhost:1234/v1",
+        "model_id": "phi-4"
+      },
+      "local": {
+        "active_model": "phi-2",
+        "device": "cuda",
+        "precision": "4bit",
+        "models": {
+          "phi-2": {
+            "model_id": "microsoft/phi-2",
+            "local_model_path": "models/llm/phi-2"
+          },
+          "phi-4-mini": {
+            "model_id": "microsoft/phi-4-mini-instruct",
+            "local_model_path": "models/llm/phi-4-mini"
+          }
+        }
+      },
+      "huggingface_api": {
+        "model_id": "microsoft/phi-2",
+        "api_token_env": "HUGGINGFACE_TOKEN",
+        "device": "auto",
+        "precision": "4bit"
+      },
+      "bedrock": {
+        "region": "us-east-1",
+        "model_id": "anthropic.claude-3-haiku-20240307-v1:0",
+        "max_tokens": 512,
+        "temperature": 0.7
+      },
+      "sagemaker": {
+        "region": "us-east-1",
+        "endpoint_name": "your-llm-endpoint",
+        "content_type": "application/json",
+        "accept": "application/json"
+      },
+      "openai": {
+        "api_key_env": "OPENAI_API_KEY",
+        "model_id": "gpt-4-turbo",
+        "max_tokens": 2048,
+        "temperature": 0.7
+      },
+      "azure_openai": {
+        "api_key_env": "AZURE_OPENAI_API_KEY",
+        "api_endpoint_env": "AZURE_OPENAI_ENDPOINT",
+        "deployment_name": "gpt-4-turbo",
+        "api_version": "2024-02-15-preview"
+      },
+      "anthropic": {
+        "api_key_env": "ANTHROPIC_API_KEY",
+        "model_id": "claude-3-opus-20240229",
+        "max_tokens": 2048,
+        "temperature": 0.7
+      },
+      "together_ai": {
+        "api_key_env": "TOGETHER_API_KEY",
+        "api_url": "https://api.together.xyz",
+        "model_id": "meta-llama/Llama-2-70b-chat-hf"
+      },
+      "replicate": {
+        "api_key_env": "REPLICATE_API_TOKEN",
+        "model_id": "replicate/llama70b-v2-chat"
+      }
+    }
+  },
+  "tts": {
+    "active_provider": "local",
+    "providers": {
+      "pyttsx3": {
+        "voice": "default",
+        "rate": 150,
+        "volume": 1.0
+      },
+      "coqui": {
+        "model": "tts_models/en/ljspeech/vits"
+      },
+      "system": {
+        "command": "say"
+      },
+      "local": {
+        "active_model": "vits",
+        "device": "cuda",
+        "language": "en",
+        "voice": "default",
+        "rate": 150,
+        "volume": 1.0,
+        "models": {
+          "glow-tts": {
+            "model_path": "models/tts/glow-tts",
+            "vocoder": "univnet"
+          },
+          "vits": {
+            "model_path": "models/tts/vits",
+            "vocoder": "default"
+          }
+        }
+      },
+      "huggingface_api": {
+        "model_id": "facebook/fastspeech2-en-ljspeech",
+        "api_token_env": "HUGGINGFACE_TOKEN",
+        "language": "en"
+      },
+      "bedrock": {
+        "region": "us-east-1",
+        "model_id": "amazon.polly.neural",
+        "voice_id": "Joanna",
+        "language_code": "en-US"
+      },
+      "sagemaker": {
+        "region": "us-east-1",
+        "endpoint_name": "your-tts-endpoint",
+        "content_type": "application/json",
+        "accept": "audio/mpeg"
+      },
+      "openai": {
+        "api_key_env": "OPENAI_API_KEY",
+        "model_id": "tts-1-hd",
+        "voice": "nova",
+        "speed": 1.0
+      },
+      "google": {
+        "project_id_env": "GOOGLE_CLOUD_PROJECT",
+        "credentials_env": "GOOGLE_APPLICATION_CREDENTIALS",
+        "language_code": "en-US",
+        "voice_name": "en-US-Neural2-C"
+      },
+      "azure": {
+        "api_key_env": "AZURE_SPEECH_API_KEY",
+        "region": "eastus",
+        "language": "en-US",
+        "voice_name": "en-US-AriaNeural"
+      }
+    }
+  },
+  "microphone": {
+    "mode": "hardware",
+    "hardware": {
+      "id": 2,
+      "calibration_duration": 2.0,
+      "energy_threshold": 50,
+      "pause_threshold": 0.6,
+      "dynamic_energy": true
+    }
+  },
+  "stt": {
+    "active_provider": "local",
+    "providers": {
+      "local": {
+        "active_model": "whisper-small",
+        "device": "cuda",
+        "compute_type": "int8",
+        "language": "en",
+        "timeout": 10,
+        "phrase_time_limit": 15,
+        "models": {
+          "whisper-small": {
+            "model_id": "openai/whisper-small",
+            "model_path": "models/stt/whisper-small",
+            "model_size": "small"
+          },
+          "whisper-medium": {
+            "model_id": "openai/whisper-medium",
+            "model_path": "models/stt/whisper-medium",
+            "model_size": "medium"
+          },
+          "whisper-large-v3": {
+            "model_id": "openai/whisper-large-v3",
+            "model_path": "models/stt/whisper-large-v3",
+            "model_size": "large-v3"
+          }
+        }
+      },
+      "huggingface_api": {
+        "model_id": "openai/whisper-small",
+        "api_token_env": "HUGGINGFACE_TOKEN",
+        "language": "en",
+        "timeout": 15
+      },
+      "bedrock": {
+        "region": "us-east-1",
+        "model_id": "amazon-transcribe",
+        "language_code": "en-US"
+      },
+      "sagemaker": {
+        "region": "us-east-1",
+        "endpoint_name": "your-stt-endpoint",
+        "content_type": "audio/wav",
+        "accept": "application/json"
+      },
+      "openai": {
+        "api_key_env": "OPENAI_API_KEY",
+        "model_id": "whisper-1",
+        "language": "en",
+        "temperature": 0.0
+      },
+      "google": {
+        "project_id_env": "GOOGLE_CLOUD_PROJECT",
+        "credentials_env": "GOOGLE_APPLICATION_CREDENTIALS",
+        "language_code": "en-US"
+      },
+      "azure": {
+        "api_key_env": "AZURE_SPEECH_API_KEY",
+        "region": "eastus",
+        "language": "en-US"
+      }
+    }
+  },
+  "camera": {
+    "mode": "hardware",
+    "hardware": {
+      "id": 0,
+      "width": 1280,
+      "height": 720
+    },
+    "simulation": {
+      "video_path": "test_walk.mp4",
+      "loop": true
+    },
+    "browser": {
+      "max_fps": 5,
+      "jpeg_quality": 0.7,
+      "note": "Frames received from frontend via /ws/camera WebSocket. Set mode to 'browser' for EC2 deployments."
+    }
+  },
+  "detector": {
+    "active_model": "yolo11m",
+    "models": {
+      "yolov8n": "models/yolo/yolov8n.pt",
+      "yolo11m": "models/yolo/yolo11m.pt",
+      "yolov11ft": "models/yolo/yolov11ft.pt"
+    },
+    "confidence_threshold": 0.25,
+    "device": "cuda"
+  },
+  "depth": {
+    "enabled": true,
+    "active_model": "midas_small",
+    "models": {
+      "depth_anything_v2_small": {
+        "model_id": "depth-anything/Depth-Anything-V2-Small",
+        "local_model_path": "models/depth/depth-anything-v2-small",
+        "type": "huggingface",
+        "device": "cuda",
+        "input_size": 518
+      },
+      "depth_anything_v2_base": {
+        "model_id": "depth-anything/Depth-Anything-V2-Base",
+        "local_model_path": "models/depth/depth-anything-v2-base",
+        "type": "huggingface",
+        "device": "cuda",
+        "input_size": 518
+      },
+      "midas_small": {
+        "model_id": "Intel/dpt-hybrid-midas",
+        "local_model_path": "models/depth/dpt-hybrid-midas",
+        "type": "huggingface",
+        "device": "cuda"
+      },
+      "midas_large": {
+        "model_id": "Intel/dpt-large",
+        "local_model_path": "models/depth/dpt-large",
+        "type": "huggingface",
+        "device": "cuda"
+      }
+    },
+    "max_fps": 10,
+    "colormap": true
+  },
+  "perception": {
+    "sampling_interval": 150,
+    "scene_threshold": 0.15
+  },
+  "safety": {
+    "alert_cooldown": 20.0,
+    "suppression": {
+      "enabled": true,
+      "redundancy_threshold": 0.5,
+      "warning_timeout": 30.0,
+      "scene_timeout": 60.0
+    }
+  }
+}
