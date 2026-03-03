@@ -251,6 +251,52 @@ body {
   box-shadow: var(--shadow-glow-red);
 }
 
+/* --- Audio Permission Banner --- */
+.audio-permission-banner {
+  background: var(--accent-amber-dim);
+  border-bottom: 1px solid rgba(255, 171, 0, 0.3);
+  padding: 8px 24px;
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from { transform: translateY(-100%); opacity: 0; }
+  to   { transform: translateY(0);     opacity: 1; }
+}
+
+.audio-permission-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.82rem;
+  color: var(--accent-amber);
+}
+
+.audio-permission-content svg {
+  flex-shrink: 0;
+}
+
+.audio-permission-content span {
+  flex: 1;
+}
+
+.audio-permission-btn {
+  background: var(--accent-amber);
+  color: #000;
+  border: none;
+  padding: 5px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity var(--transition-fast);
+}
+
+.audio-permission-btn:hover {
+  opacity: 0.85;
+}
+
 /* --- Main Content --- */
 .main-content {
   display: grid;

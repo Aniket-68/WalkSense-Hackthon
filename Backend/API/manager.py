@@ -77,6 +77,19 @@ class SystemManager:
         from Infrastructure.config import Config
         self._camera_mode = Config.get("camera.mode", "hardware")
 
+        # Remote TTS state (sent to clients via WebSocket)
+        self._tts_remote_mode = Config.get("tts.remote_mode", "browser")
+        self._tts_seq: int = 0          # monotonically increasing; client deduplicates
+        # Sliding window of recent utterances — NOT drained on read.
+        # Each item: {"text", "seq", "priority", "ts"}
+        # Items older than _TTS_WINDOW_SECS are pruned on append.
+        self._tts_buffer: list = []
+        self._tts_lock = threading.Lock()
+        _TTS_WINDOW_SECS = 10  # keep utterances for 10s so late-joining clients catch up
+        self._tts_window = _TTS_WINDOW_SECS
+        # Audio bytes queue for server-side TTS streaming (/ws/audio)
+        self._audio_queue: queue.Queue = queue.Queue(maxsize=8)
+
         # Query queue
         self._query_queue: queue.Queue = queue.Queue()
 
@@ -190,6 +203,9 @@ class SystemManager:
             llm_api_key=llm_api_key,
             depth_estimator=self._depth
         )
+
+        # Wire remote TTS callback so router can emit to clients
+        self._fusion.router.set_remote_tts(self.emit_tts)
 
         self._qwen = QwenVLM(
             backend=vlm_provider,
@@ -414,9 +430,17 @@ class SystemManager:
 
     def get_state(self) -> Dict[str, Any]:
         """Get the full system state for WebSocket broadcast."""
+        # Snapshot recent TTS utterances (NOT drained — all clients see them;
+        # frontend deduplicates via lastSeq).
+        with self._tts_lock:
+            tts_queue = [{"text": u["text"], "seq": u["seq"], "priority": u["priority"]}
+                         for u in self._tts_buffer]
+
         return {
             "system_status": self._system_status,
             "camera_mode": self._camera_mode or "hardware",
+            "tts_remote_mode": self._tts_remote_mode,
+            "tts_queue": tts_queue,    # list of {"text", "seq", "priority"}
             "pipeline": {k: dict(v) for k, v in self._pipeline_state.items()},
             "latest_description": self._latest_description,
             "spatial_summary": self._spatial_summary,
@@ -425,6 +449,86 @@ class SystemManager:
             "dialogue_history": self._dialogue_history[-20:],  # last 20
             "muted": self._muted,
         }
+
+    # ------------------------------------------------------------------
+    # Remote TTS helpers
+    # ------------------------------------------------------------------
+
+    def emit_tts(self, text: str, priority: str = "response"):
+        """Emit TTS text for remote clients.
+
+        Depending on ``tts.remote_mode`` in config.json:
+        - "browser"  → text sent via WebSocket state; client uses Web Speech API
+        - "server"   → audio synthesized here and queued for /ws/audio streaming
+        - "hybrid"   → critical/warning via browser, response/scene via server audio
+        - "local"    → only plays on server speakers (legacy)
+        """
+        if not text:
+            return
+
+        mode = self._tts_remote_mode
+
+        # Append to sliding-window buffer; prune old entries.
+        self._tts_seq += 1
+        now = time.time()
+        with self._tts_lock:
+            self._tts_buffer.append({
+                "text": text,
+                "seq": self._tts_seq,
+                "priority": priority,
+                "ts": now,
+            })
+            # Prune utterances older than the window
+            cutoff = now - self._tts_window
+            self._tts_buffer = [u for u in self._tts_buffer if u["ts"] >= cutoff]
+
+        use_browser = False
+        use_server_audio = False
+        use_local = False
+
+        if mode == "browser":
+            use_browser = True
+        elif mode == "server":
+            use_server_audio = True
+        elif mode == "hybrid":
+            # Fast browser TTS for safety-critical, server audio for longer responses
+            if priority in ("critical", "warning"):
+                use_browser = True
+            else:
+                use_server_audio = True
+        elif mode == "local":
+            use_local = True
+        else:
+            use_browser = True  # safe default
+
+        # Server-side audio synthesis → queue bytes for /ws/audio
+        if use_server_audio and self._tts:
+            try:
+                audio_bytes = self._tts.synthesize_to_bytes(text)
+                if audio_bytes:
+                    # Drop oldest if full
+                    if self._audio_queue.full():
+                        try:
+                            self._audio_queue.get_nowait()
+                        except queue.Empty:
+                            pass
+                    self._audio_queue.put_nowait(audio_bytes)
+            except Exception as e:
+                logger.warning(f"[TTS] Server-side synthesis failed, falling back to browser: {e}")
+                # Fallback: text is already in state, browser can pick it up
+
+        # Local playback on server speakers (hardware mode)
+        if use_local and self._tts:
+            self._tts.speak(text)
+
+        # Browser mode: text + seq already set above — client reads from WebSocket state
+
+    def get_audio_chunk(self) -> Optional[bytes]:
+        """Non-blocking: get next synthesized audio chunk for /ws/audio."""
+        try:
+            return self._audio_queue.get_nowait()
+        except queue.Empty:
+            return None
 
     def get_annotated_frame(self) -> Optional[bytes]:
         """Get the latest JPEG-encoded annotated frame."""
@@ -626,6 +730,8 @@ class SystemManager:
                         })
                         self._pipeline_state["tts"]["active"] = True
                         self._pipeline_state["tts"]["is_speaking"] = True
+                        # Emit to remote clients
+                        self.emit_tts(answer, priority="response")
 
                     self._current_query = None
 

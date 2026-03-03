@@ -141,6 +141,9 @@
     }
   },
   "tts": {
+    "remote_mode": "browser",
+    "remote_mode_options": ["browser", "server", "hybrid", "local"],
+    "remote_mode_note": "browser = Web Speech API on client | server = backend synthesizes WAV and streams via /ws/audio | hybrid = browser for alerts + server for responses | local = play on server speakers only",
     "active_provider": "local",
     "providers": {
       "pyttsx3": {

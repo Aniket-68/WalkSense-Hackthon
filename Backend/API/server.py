@@ -79,10 +79,11 @@ async def system_status():
 
 @app.get("/api/config")
 async def get_config():
-    """Return runtime configuration the frontend needs (camera mode etc.)."""
+    """Return runtime configuration the frontend needs (camera mode, TTS mode, etc.)."""
     from Infrastructure.config import Config
     return {
         "camera_mode": Config.get("camera.mode", "hardware"),
+        "tts_remote_mode": Config.get("tts.remote_mode", "browser"),
     }
 
 
@@ -264,6 +265,37 @@ async def camera_ws(ws: WebSocket):
         logger.warning(f"[WS/Camera] Error: {e}")
     finally:
         logger.info("[WS/Camera] Browser camera client disconnected")
+
+
+# ──────────────────────────────────────────────
+# WebSocket — Server-side TTS audio streaming
+# ──────────────────────────────────────────────
+
+@app.websocket("/ws/audio")
+async def audio_ws(ws: WebSocket):
+    """Stream synthesized audio bytes to the browser.
+
+    Used when tts.remote_mode is 'server' or 'hybrid'.
+    The backend synthesizes WAV/MP3 via TTSEngine.synthesize_to_bytes()
+    and pushes binary chunks here.  The frontend decodes and plays them
+    via the Web Audio API.
+    """
+    await ws.accept()
+    logger.info("[WS/Audio] Client connected for TTS audio stream")
+
+    try:
+        while True:
+            audio_data = manager.get_audio_chunk()
+            if audio_data:
+                await ws.send_bytes(audio_data)
+            else:
+                await asyncio.sleep(0.1)   # poll interval
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.warning(f"[WS/Audio] Error: {e}")
+    finally:
+        logger.info("[WS/Audio] Client disconnected")
 
 
 # ──────────────────────────────────────────────

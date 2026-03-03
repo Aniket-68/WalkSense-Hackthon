@@ -188,3 +188,101 @@ class TTSEngine:
             except:
                 pass
 
+    # -----------------------------------------------------------------
+    # Server-side synthesis (Option B: stream audio bytes to client)
+    # -----------------------------------------------------------------
+
+    def synthesize_to_bytes(self, text: str) -> bytes:
+        """Synthesize text to WAV bytes (for remote streaming via /ws/audio).
+
+        Returns raw WAV bytes that can be sent to the browser and decoded
+        with ``AudioContext.decodeAudioData()``.
+
+        Strategy:
+        1. win32com  → SpFileStream to capture SAPI output to WAV file
+        2. pyttsx3   → save_to_file()
+        3. fallback  → gTTS (Google Translate TTS) as a last resort
+        """
+        import tempfile
+        import io
+
+        wav_path = os.path.join(tempfile.gettempdir(), f"walksense_tts_{id(self)}.wav")
+
+        try:
+            if self.use_win32com and self.engine:
+                return self._synth_win32com(text, wav_path)
+
+            if self.engine and not self.use_win32com:
+                return self._synth_pyttsx3(text, wav_path)
+
+        except Exception as e:
+            from loguru import logger
+            logger.warning(f"[TTS] Primary synthesis failed: {e}, trying gTTS fallback")
+
+        # Fallback: gTTS (requires internet, but always works)
+        try:
+            return self._synth_gtts(text)
+        except Exception as e:
+            from loguru import logger
+            logger.error(f"[TTS] All synthesis methods failed: {e}")
+            return b""
+
+    def _synth_win32com(self, text: str, wav_path: str) -> bytes:
+        """Synthesize via win32com SAPI → WAV file → bytes."""
+        import win32com.client
+
+        # Create a fresh SAPI voice in THIS thread (COM apartment)
+        voice = win32com.client.Dispatch("SAPI.SpVoice")
+        stream = win32com.client.Dispatch("SAPI.SpFileStream")
+
+        # Open file stream for writing (create flag = 3)
+        stream.Open(wav_path, 3)
+        voice.AudioOutputStream = stream
+        voice.Rate = self.engine.Rate
+        voice.Volume = self.engine.Volume
+        voice.Speak(text)
+        stream.Close()
+
+        with open(wav_path, "rb") as f:
+            data = f.read()
+
+        try:
+            os.unlink(wav_path)
+        except OSError:
+            pass
+
+        return data
+
+    def _synth_pyttsx3(self, text: str, wav_path: str) -> bytes:
+        """Synthesize via pyttsx3 save_to_file → bytes."""
+        import pyttsx3
+
+        # pyttsx3 is not thread-safe — create a temporary engine
+        eng = pyttsx3.init()
+        eng.setProperty("rate", self.engine.getProperty("rate"))
+        eng.setProperty("volume", self.engine.getProperty("volume"))
+        eng.save_to_file(text, wav_path)
+        eng.runAndWait()
+        eng.stop()
+
+        with open(wav_path, "rb") as f:
+            data = f.read()
+
+        try:
+            os.unlink(wav_path)
+        except OSError:
+            pass
+
+        return data
+
+    @staticmethod
+    def _synth_gtts(text: str) -> bytes:
+        """Synthesize via Google Translate TTS (MP3 bytes)."""
+        import io
+        from gtts import gTTS
+
+        mp3_buf = io.BytesIO()
+        tts = gTTS(text=text, lang="en", slow=False)
+        tts.write_to_fp(mp3_buf)
+        return mp3_buf.getvalue()
+
