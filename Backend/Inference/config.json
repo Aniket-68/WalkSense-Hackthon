@@ -283,7 +283,7 @@
     }
   },
   "camera": {
-    "mode": "hardware",
+    "mode": "browser",
     "hardware": {
       "id": 0,
       "width": 1280,

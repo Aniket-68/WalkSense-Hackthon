@@ -77,6 +77,15 @@ async def system_status():
     return manager.get_state()
 
 
+@app.get("/api/config")
+async def get_config():
+    """Return runtime configuration the frontend needs (camera mode etc.)."""
+    from Infrastructure.config import Config
+    return {
+        "camera_mode": Config.get("camera.mode", "hardware"),
+    }
+
+
 @app.post("/api/query")
 async def submit_query(req: QueryRequest):
     """Submit a text query to the system."""

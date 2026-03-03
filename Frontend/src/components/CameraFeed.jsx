@@ -8,7 +8,8 @@ export default function CameraFeed({ state }) {
   const spatialSummary = state?.spatial_summary || "";
   const description = state?.latest_description || "";
 
-  const useBrowserCam = CAMERA_MODE === "browser";
+  // Prefer backend-reported camera_mode (runtime), fall back to env var (build-time)
+  const useBrowserCam = (state?.camera_mode ?? CAMERA_MODE) === "browser";
 
   return (
     <div className="camera-container">

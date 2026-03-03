@@ -73,7 +73,9 @@ class SystemManager:
 
         # Browser camera frame queue (for camera.mode = "browser")
         self._browser_frame_queue: queue.Queue = queue.Queue(maxsize=2)
-        self._camera_mode = None  # set during _init_components
+        # Read camera mode early so get_state() reports correctly before start
+        from Infrastructure.config import Config
+        self._camera_mode = Config.get("camera.mode", "hardware")
 
         # Query queue
         self._query_queue: queue.Queue = queue.Queue()
@@ -414,6 +416,7 @@ class SystemManager:
         """Get the full system state for WebSocket broadcast."""
         return {
             "system_status": self._system_status,
+            "camera_mode": self._camera_mode or "hardware",
             "pipeline": {k: dict(v) for k, v in self._pipeline_state.items()},
             "latest_description": self._latest_description,
             "spatial_summary": self._spatial_summary,
@@ -453,11 +456,18 @@ class SystemManager:
 
         Acts as a drop-in replacement for Camera.stream() when
         camera.mode is 'browser'.
+
+        Also drains the query queue and answers queries via text-only
+        LLM when no camera frames are available (fallback path).
         """
         import numpy as np
+        no_frame_seconds = 0
+        warned = False
         while self._running:
             try:
                 jpeg_bytes = self._browser_frame_queue.get(timeout=0.5)
+                no_frame_seconds = 0
+                warned = False
                 # Decode JPEG → numpy BGR frame
                 arr = np.frombuffer(jpeg_bytes, dtype=np.uint8)
                 frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
@@ -466,7 +476,69 @@ class SystemManager:
                 else:
                     logger.warning("[BrowserCam] Failed to decode JPEG frame")
             except queue.Empty:
+                no_frame_seconds += 0.5
+                if not warned and no_frame_seconds >= 3:
+                    logger.warning(
+                        "[BrowserCam] No frames received for 3s. "
+                        "Ensure the browser has camera permission (requires HTTPS or localhost)."
+                    )
+                    warned = True
+
+                # ── Fallback: answer pending queries without camera ──
+                self._drain_queries_without_camera()
                 continue
+
+    def _drain_queries_without_camera(self):
+        """Answer any pending user queries using text-only LLM (no camera frame).
+
+        Called when browser camera frames are not arriving.  Provides a
+        degraded but functional response path so queries don't hang forever.
+        """
+        try:
+            query = self._query_queue.get_nowait()
+        except queue.Empty:
+            return
+
+        logger.info(f"[Fallback] Answering query without camera frame: {query}")
+        self._current_query = query
+        self._pipeline_state["stt"]["active"] = True
+        # Note: user message already added to dialogue_history by submit_query()
+
+        try:
+            self._pipeline_state["llm"]["active"] = True
+            self._pipeline_state["llm"]["is_processing"] = True
+
+            answer = self._fusion.handle_user_query(query)
+            if not answer:
+                answer = (
+                    "I can't see right now — no camera feed is available. "
+                    "Please grant camera permission in your browser, or check that "
+                    "you're accessing the page over HTTPS / localhost."
+                )
+
+            self._current_response = answer
+            self._dialogue_history.append({
+                "role": "ai",
+                "text": answer,
+                "timestamp": time.time(),
+            })
+            logger.info(f"[Fallback] LLM response: {answer[:120]}")
+        except Exception as e:
+            logger.error(f"[Fallback] LLM failed: {e}")
+            fallback_msg = (
+                "Camera feed not available. Please allow camera access in your browser "
+                "(requires HTTPS or localhost)."
+            )
+            self._current_response = fallback_msg
+            self._dialogue_history.append({
+                "role": "ai",
+                "text": fallback_msg,
+                "timestamp": time.time(),
+            })
+        finally:
+            self._current_query = None
+            self._pipeline_state["stt"]["active"] = False
+            self._pipeline_state["llm"]["is_processing"] = False
 
     # ------------------------------------------------------------------
     # Main processing loop
