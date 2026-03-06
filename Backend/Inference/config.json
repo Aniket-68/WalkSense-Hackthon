@@ -1,13 +1,13 @@
 {
   "vlm": {
-    "active_provider": "lm_studio",
+    "active_provider": "local",
     "providers": {
       "lm_studio": {
         "url": "http://localhost:1234/v1",
         "model_id": "qwen/qwen3-vl-4b"
       },
       "local": {
-        "active_model": "qwen2-vl-2b",
+        "active_model": "qwen3-vl-4b",
         "device": "cuda",
         "precision": "4bit",
         "models": {
@@ -79,7 +79,7 @@
         "model_id": "phi-4"
       },
       "local": {
-        "active_model": "phi-2",
+        "active_model": "phi-4-mini",
         "device": "cuda",
         "precision": "4bit",
         "models": {
@@ -226,7 +226,7 @@
     "active_provider": "local",
     "providers": {
       "local": {
-        "active_model": "whisper-small",
+        "active_model": "whisper-medium",
         "device": "cuda",
         "compute_type": "int8",
         "language": "en",
@@ -303,10 +303,12 @@
     }
   },
   "detector": {
-    "active_model": "yolo11m",
+    "active_model": "yolo11x",
     "models": {
       "yolov8n": "Models/yolo/yolov8n.pt",
       "yolo11m": "Models/yolo/yolo11m.pt",
+      "yolo11l": "Models/yolo/yolo11l.pt",
+      "yolo11x": "Models/yolo/yolo11x.pt",
       "yolov11ft": "Models/yolo/yolov11ft.pt"
     },
     "confidence_threshold": 0.25,
@@ -314,7 +316,7 @@
   },
   "depth": {
     "enabled": true,
-    "active_model": "midas_small",
+    "active_model": "depth_anything_v2_base",
     "models": {
       "depth_anything_v2_small": {
         "model_id": "depth-anything/Depth-Anything-V2-Small",

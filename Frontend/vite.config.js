@@ -18,6 +18,8 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true,
         secure: false,
+        timeout: 120000,       // 2 min — covers slow Whisper + ffmpeg
+        proxyTimeout: 120000,
         configure: (proxy) => {
           proxy.on('error', (err, _req, res) => {
             if (res && !res.headersSent) {

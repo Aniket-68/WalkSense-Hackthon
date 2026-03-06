@@ -83,7 +83,7 @@ GUIDELINES:
             response = requests.post(
                 f"{self.api_url}/chat/completions",
                 json=payload,
-                timeout=10
+                timeout=60
             )
             
             if response.status_code == 200:
@@ -114,7 +114,7 @@ GUIDELINES:
             response = requests.post(
                 f"{self.api_url}/api/generate",
                 json=payload,
-                timeout=10
+                timeout=60
             )
             
             if response.status_code == 200:
