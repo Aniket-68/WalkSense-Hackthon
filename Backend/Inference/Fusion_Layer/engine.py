@@ -1,6 +1,7 @@
 """Fusion Layer: Central orchestration for WalkSense AI system."""
 
 from typing import Optional, List, Dict, Any
+import threading
 from Perception_Layer.alerts import AlertEvent
 from Fusion_Layer.state import RuntimeState
 from Fusion_Layer.router import DecisionRouter
@@ -51,6 +52,21 @@ class FusionEngine:
         
         # State for query handling
         self.pending_query = None
+        self._pending_query_lock = threading.Lock()
+
+    def set_pending_query(self, query: Optional[str]) -> None:
+        with self._pending_query_lock:
+            self.pending_query = query
+
+    def get_pending_query(self) -> Optional[str]:
+        with self._pending_query_lock:
+            return self.pending_query
+
+    def consume_pending_query(self) -> Optional[str]:
+        with self._pending_query_lock:
+            query = self.pending_query
+            self.pending_query = None
+            return query
 
     def handle_safety_alert(self, message: str, alert_type: str = "CRITICAL_ALERT") -> None:
         """Process and route immediate safety hazards.
@@ -130,10 +146,10 @@ class FusionEngine:
         # Save to memory
         self.spatial.add_scene_description(text)
         
-        if self.pending_query:
+        pending_query = self.consume_pending_query()
+        if pending_query:
             # We were waiting for a fresh description to answer a user query!
-            ans = self._generate_llm_answer(self.pending_query, text)
-            self.pending_query = None
+            ans = self._generate_llm_answer(pending_query, text)
             return ans
         else:
             # Regular passive description
@@ -190,7 +206,7 @@ class FusionEngine:
             # self.router.route(ack_event) # DISABLED
         
         # Keep query pending for VLM-grounded refinement
-        self.pending_query = query
+        self.set_pending_query(query)
         logger.info(f"[FUSION] Query pending for VLM refinement")
         
         return locals().get("immediate_answer", None)

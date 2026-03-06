@@ -15,6 +15,7 @@ import cv2
 import time
 import threading
 import queue
+from collections import deque
 from typing import Optional, Dict, Any, List
 from loguru import logger
 from dataclasses import dataclass, field
@@ -46,6 +47,9 @@ class SystemManager:
         self._running = False
         self._system_status = "IDLE"
         self._loop_thread: Optional[threading.Thread] = None
+        self._start_thread: Optional[threading.Thread] = None
+        self._lifecycle_lock = threading.Lock()
+        self._run_generation = 0
 
         # Pipeline component states
         self._pipeline_state = {
@@ -63,7 +67,8 @@ class SystemManager:
         self._spatial_summary = ""
         self._current_query: Optional[str] = None
         self._current_response: Optional[str] = None
-        self._dialogue_history: List[Dict[str, Any]] = []
+        self._dialogue_history = deque(maxlen=int(os.getenv("SYSTEM_DIALOGUE_HISTORY_MAX", "200")))
+        self._history_lock = threading.Lock()
         self._detections: list = []
 
         # Frame buffer
@@ -91,7 +96,7 @@ class SystemManager:
         self._audio_queue: queue.Queue = queue.Queue(maxsize=8)
 
         # Query queue
-        self._query_queue: queue.Queue = queue.Queue()
+        self._query_queue: queue.Queue = queue.Queue(maxsize=int(os.getenv("SYSTEM_QUERY_QUEUE_MAXSIZE", "64")))
 
         # Lazy-loaded components (initialized on start)
         self._camera = None
@@ -103,6 +108,7 @@ class SystemManager:
         self._sampler = None
         self._scene_detector = None
         self._qwen_worker = None
+        self._llm_worker = None
         self._muted = False
 
         logger.info("[SystemManager] Initialized (singleton)")
@@ -138,6 +144,12 @@ class SystemManager:
             vlm_model = Config.get(f"{vlm_config_path}.models.{_vlm_active}.model_id") if _vlm_active else Config.get(f"{vlm_config_path}.model_id")
         else:
             vlm_model = Config.get(f"{vlm_config_path}.model_id")
+        vlm_api_key = None
+        if vlm_provider == "gemini":
+            vlm_api_env = Config.get(f"{vlm_config_path}.api_key_env", "GEMINI_API_KEY")
+            vlm_api_key = os.getenv(vlm_api_env)
+            if not vlm_api_key:
+                logger.warning(f"[SystemManager] Gemini VLM API key not found in env var: {vlm_api_env}")
 
         # LLM config
         llm_provider = Config.get("llm.active_provider", "ollama")
@@ -210,7 +222,8 @@ class SystemManager:
         self._qwen = QwenVLM(
             backend=vlm_provider,
             model_id=vlm_model,
-            lm_studio_url=vlm_url
+            lm_studio_url=vlm_url,
+            api_key=vlm_api_key,
         )
 
         self._sampler = FrameSampler(every_n_frames=sampling)
@@ -232,6 +245,20 @@ class SystemManager:
         import os
         try:
             provider = Config.get("stt.active_provider", "local")
+            if provider == "deepgram":
+                # Remote STT provider, no local model preload required
+                self._whisper_model = None
+                self._whisper_backend = "deepgram"
+                logger.info("[STT] Deepgram provider selected — skipping local Whisper preload")
+                return
+
+            if provider != "local":
+                # Other remote providers are not currently wired for /api/voice-query
+                self._whisper_model = None
+                self._whisper_backend = provider
+                logger.info(f"[STT] Provider '{provider}' selected — no local preload")
+                return
+
             config_path = f"stt.providers.{provider}"
             # Resolve model_size from nested active_model → models dict
             _active = Config.get(f"{config_path}.active_model")
@@ -282,48 +309,156 @@ class SystemManager:
             self._whisper_backend = None
             raise  # Re-raise to stop initialization
 
+    def _transcribe_deepgram(self, audio_bytes: bytes) -> Optional[str]:
+        """Transcribe audio via Deepgram REST API."""
+        import requests
+
+        from Infrastructure.config import Config
+        config_path = "stt.providers.deepgram"
+
+        api_key_env = Config.get(f"{config_path}.api_key_env", "DEEPGRAM_API_KEY")
+        api_key = os.getenv(api_key_env)
+        if not api_key:
+            logger.error(f"[STT] Deepgram API key missing in env var: {api_key_env}")
+            return None
+
+        api_url = Config.get(f"{config_path}.url", "https://api.deepgram.com/v1/listen")
+        model_id = Config.get(f"{config_path}.model_id", "nova-3")
+        language = Config.get(f"{config_path}.language", "multi")
+        timeout_s = Config.get(f"{config_path}.timeout", 20)
+        content_type = Config.get(f"{config_path}.content_type", "audio/wav")
+
+        params = {
+            "model": model_id,
+            "language": language,
+            "smart_format": str(bool(Config.get(f"{config_path}.smart_format", True))).lower(),
+            "punctuate": str(bool(Config.get(f"{config_path}.punctuate", True))).lower(),
+        }
+
+        headers = {
+            "Authorization": f"Token {api_key}",
+            "Content-Type": content_type,
+        }
+
+        try:
+            start = time.time()
+            response = requests.post(
+                api_url,
+                params=params,
+                headers=headers,
+                data=audio_bytes,
+                timeout=timeout_s,
+            )
+            response.raise_for_status()
+            payload = response.json()
+
+            transcript = (
+                payload.get("results", {})
+                .get("channels", [{}])[0]
+                .get("alternatives", [{}])[0]
+                .get("transcript", "")
+                .strip()
+            )
+
+            duration = (time.time() - start) * 1000
+            if transcript:
+                logger.info(f"[STT] Deepgram transcribed in {duration:.0f}ms: {transcript}")
+                return transcript
+
+            logger.info(f"[STT] Deepgram returned empty transcript in {duration:.0f}ms")
+            return None
+        except Exception as e:
+            logger.error(f"[STT] Deepgram transcription failed: {e}")
+            return None
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
     def start(self):
         """Start the processing pipeline."""
-        if self._running or self._system_status == "STARTING":
-            return
+        with self._lifecycle_lock:
+            if self._running or self._system_status == "STARTING":
+                return
+            self._system_status = "STARTING"
+            self._run_generation += 1
+            generation = self._run_generation
+            logger.info("[SystemManager] System starting — loading components...")
 
-        self._system_status = "STARTING"
-        logger.info("[SystemManager] System starting — loading components...")
+            # Run heavy init in a thread so the API responds immediately
+            self._start_thread = threading.Thread(
+                target=self._start_async,
+                args=(generation,),
+                daemon=True,
+            )
+            self._start_thread.start()
 
-        # Run heavy init in a thread so the API responds immediately
-        threading.Thread(target=self._start_async, daemon=True).start()
-
-    def _start_async(self):
+    def _start_async(self, generation: int):
         """Background thread that loads components then starts the pipeline."""
         try:
             # Re-init if components were never loaded, or if camera was
             # released after a previous stop (the finally block in
             # _main_loop sets self._camera = None).
-            needs_init = (self._detector is None or
-                          (self._camera is None and self._camera_mode != "browser"))
+            needs_init = (
+                self._detector is None
+                or self._qwen_worker is None
+                or not self._qwen_worker.running
+                or self._llm_worker is None
+                or not self._llm_worker.running
+                or (self._camera is None and self._camera_mode != "browser")
+            )
             if needs_init:
                 self._init_components()
 
-            self._running = True
-            self._system_status = "RUNNING"
-            self._loop_thread = threading.Thread(target=self._main_loop, daemon=True)
-            self._loop_thread.start()
+            with self._lifecycle_lock:
+                if generation != self._run_generation or self._system_status != "STARTING":
+                    logger.info("[SystemManager] Start request superseded; aborting startup.")
+                    return
+                self._running = True
+                self._system_status = "RUNNING"
+                self._loop_thread = threading.Thread(
+                    target=self._main_loop,
+                    args=(generation,),
+                    daemon=True,
+                )
+                self._loop_thread.start()
             logger.info("[SystemManager] Pipeline started")
         except Exception as e:
             logger.error(f"[SystemManager] Failed to start: {e}")
             import traceback
             traceback.print_exc()
-            self._system_status = "ERROR"
-            self._running = False
+            with self._lifecycle_lock:
+                if generation == self._run_generation:
+                    self._system_status = "ERROR"
+                    self._running = False
+        finally:
+            with self._lifecycle_lock:
+                self._start_thread = None
 
     def stop(self):
         """Stop the processing pipeline."""
-        self._system_status = "STOPPING"
-        self._running = False
+        with self._lifecycle_lock:
+            self._run_generation += 1
+            self._running = False
+            if self._system_status != "IDLE":
+                self._system_status = "STOPPING"
+
+            loop_thread = self._loop_thread
+            start_thread = self._start_thread
+            self._loop_thread = None
+            self._start_thread = None
+            qwen_worker = self._qwen_worker
+            llm_worker = self._llm_worker
+
+        if qwen_worker:
+            qwen_worker.stop()
+        if llm_worker:
+            llm_worker.stop()
+
+        if loop_thread and loop_thread.is_alive():
+            loop_thread.join(timeout=5)
+        if start_thread and start_thread.is_alive():
+            start_thread.join(timeout=5)
 
         # Reset pipeline states
         for key in self._pipeline_state:
@@ -331,25 +466,29 @@ class SystemManager:
             if "is_processing" in self._pipeline_state[key]:
                 self._pipeline_state[key]["is_processing"] = False
 
-        if self._qwen_worker:
-            self._qwen_worker.stop()
-
-        if hasattr(self, '_llm_worker') and self._llm_worker:
-            self._llm_worker.stop()
-
         self._system_status = "IDLE"
         logger.info("[SystemManager] Pipeline stopped")
 
     def submit_query(self, text: str):
         """Submit a user text query."""
-        self._query_queue.put(text)
+        try:
+            self._query_queue.put_nowait(text)
+        except queue.Full:
+            try:
+                # Drop oldest query to keep queue bounded and non-blocking.
+                self._query_queue.get_nowait()
+            except queue.Empty:
+                pass
+            self._query_queue.put_nowait(text)
+            logger.warning("[SystemManager] Query queue full; dropped oldest pending query")
         self._current_query = text
         self._pipeline_state["stt"]["active"] = True
-        self._dialogue_history.append({
-            "role": "user",
-            "text": text,
-            "timestamp": time.time()
-        })
+        with self._history_lock:
+            self._dialogue_history.append({
+                "role": "user",
+                "text": text,
+                "timestamp": time.time()
+            })
         logger.info(f"[SystemManager] Query submitted: {text}")
 
     def toggle_mute(self) -> bool:
@@ -359,17 +498,24 @@ class SystemManager:
         return self._muted
 
     def transcribe_audio(self, audio_bytes: bytes) -> Optional[str]:
-        """Transcribe audio bytes (WAV) using pre-loaded Whisper model."""
+        """Transcribe WAV audio bytes using the configured STT provider."""
         import tempfile
         import os
+        from Infrastructure.config import Config
+
+        provider = Config.get("stt.active_provider", "local")
+        if provider == "deepgram":
+            return self._transcribe_deepgram(audio_bytes)
+
+        if provider != "local":
+            logger.error(f"[STT] Unsupported provider for /api/voice-query: {provider}")
+            return None
 
         if not getattr(self, '_whisper_model', None):
             logger.error("[STT] Whisper model not loaded")
             return None
 
         try:
-            from Infrastructure.config import Config
-            provider = Config.get("stt.active_provider", "local")
             language = Config.get(f"stt.providers.{provider}.language", "en")
 
             logger.debug(f"[STT] Starting transcription: backend={self._whisper_backend}, language={language}")
@@ -435,6 +581,8 @@ class SystemManager:
         with self._tts_lock:
             tts_queue = [{"text": u["text"], "seq": u["seq"], "priority": u["priority"]}
                          for u in self._tts_buffer]
+        with self._history_lock:
+            dialogue_history = list(self._dialogue_history)[-20:]
 
         return {
             "system_status": self._system_status,
@@ -446,7 +594,7 @@ class SystemManager:
             "spatial_summary": self._spatial_summary,
             "current_query": self._current_query,
             "current_response": self._current_response,
-            "dialogue_history": self._dialogue_history[-20:],  # last 20
+            "dialogue_history": dialogue_history,  # last 20
             "muted": self._muted,
         }
 
@@ -553,7 +701,10 @@ class SystemManager:
                 self._browser_frame_queue.get_nowait()
             except queue.Empty:
                 pass
-            self._browser_frame_queue.put_nowait(jpeg_bytes)
+            try:
+                self._browser_frame_queue.put_nowait(jpeg_bytes)
+            except queue.Full:
+                pass
 
     def _browser_frame_source(self):
         """Generator that yields numpy frames decoded from browser JPEG bytes.
@@ -621,11 +772,12 @@ class SystemManager:
                 )
 
             self._current_response = answer
-            self._dialogue_history.append({
-                "role": "ai",
-                "text": answer,
-                "timestamp": time.time(),
-            })
+            with self._history_lock:
+                self._dialogue_history.append({
+                    "role": "ai",
+                    "text": answer,
+                    "timestamp": time.time(),
+                })
             logger.info(f"[Fallback] LLM response: {answer[:120]}")
         except Exception as e:
             logger.error(f"[Fallback] LLM failed: {e}")
@@ -634,11 +786,12 @@ class SystemManager:
                 "(requires HTTPS or localhost)."
             )
             self._current_response = fallback_msg
-            self._dialogue_history.append({
-                "role": "ai",
-                "text": fallback_msg,
-                "timestamp": time.time(),
-            })
+            with self._history_lock:
+                self._dialogue_history.append({
+                    "role": "ai",
+                    "text": fallback_msg,
+                    "timestamp": time.time(),
+                })
         finally:
             self._current_query = None
             self._pipeline_state["stt"]["active"] = False
@@ -648,7 +801,7 @@ class SystemManager:
     # Main processing loop
     # ------------------------------------------------------------------
 
-    def _main_loop(self):
+    def _main_loop(self, generation: int):
         """Background thread running the pipeline."""
         logger.info("[SystemManager] Main loop started")
         self._pipeline_state["camera"]["active"] = True
@@ -663,7 +816,7 @@ class SystemManager:
 
         try:
             for frame in frame_source:
-                if not self._running:
+                if not self._running or generation != self._run_generation:
                     break
 
                 current_time = time.time()
@@ -707,7 +860,7 @@ class SystemManager:
 
                     # Per architecture: just set pending_query on FusionEngine
                     # LLM only runs AFTER VLM provides scene description
-                    self._fusion.pending_query = query
+                    self._fusion.set_pending_query(query)
                     logger.info(f"[Pipeline] Query pending for VLM grounding: {query}")
 
                     self._pipeline_state["stt"]["active"] = False
@@ -715,7 +868,7 @@ class SystemManager:
                     pass
 
                 # --- Harvest LLM results from VLM-grounded queries (non-blocking) ---
-                llm_result = self._llm_worker.get_result()
+                llm_result = self._llm_worker.get_result() if self._llm_worker else None
                 if llm_result:
                     result_type, answer, llm_ms = llm_result
                     self._pipeline_state["llm"]["last_latency_ms"] = round(llm_ms, 1)
@@ -723,11 +876,12 @@ class SystemManager:
 
                     if answer:
                         self._current_response = answer
-                        self._dialogue_history.append({
-                            "role": "ai",
-                            "text": answer,
-                            "timestamp": time.time()
-                        })
+                        with self._history_lock:
+                            self._dialogue_history.append({
+                                "role": "ai",
+                                "text": answer,
+                                "timestamp": time.time()
+                            })
                         self._pipeline_state["tts"]["active"] = True
                         self._pipeline_state["tts"]["is_speaking"] = True
                         # Emit to remote clients
@@ -739,7 +893,7 @@ class SystemManager:
                 is_critical = safety_result and safety_result[0] == "CRITICAL_ALERT"
                 if not is_critical:
                     # Harvest VLM results
-                    result = self._qwen_worker.get_result()
+                    result = self._qwen_worker.get_result() if self._qwen_worker else None
                     if result:
                         new_desc, duration = result
                         self._pipeline_state["vlm"]["is_processing"] = False
@@ -749,9 +903,9 @@ class SystemManager:
 
                         if self._current_query:
                             # Submit VLM-grounded LLM query (non-blocking)
-                            self._llm_worker.process_vlm_query(new_desc)
-                            self._pipeline_state["llm"]["active"] = True
-                            self._pipeline_state["llm"]["is_processing"] = True
+                            if self._llm_worker and self._llm_worker.process_vlm_query(new_desc):
+                                self._pipeline_state["llm"]["active"] = True
+                                self._pipeline_state["llm"]["is_processing"] = True
                         else:
                             self._fusion.handle_scene_description(new_desc)
 
@@ -775,7 +929,7 @@ class SystemManager:
                         if has_query:
                             context_str += f". USER QUESTION: {self._current_query}"
 
-                        if self._qwen_worker.process(clean_frame, context_str):
+                        if self._qwen_worker and self._qwen_worker.process(clean_frame, context_str):
                             self._pipeline_state["vlm"]["active"] = True
                             self._pipeline_state["vlm"]["is_processing"] = True
 
@@ -793,7 +947,8 @@ class SystemManager:
             traceback.print_exc()
         finally:
             self._running = False
-            self._system_status = "IDLE"
+            if generation == self._run_generation:
+                self._system_status = "IDLE"
             self._pipeline_state["camera"]["active"] = False
             if self._camera:
                 self._camera.release()
@@ -837,11 +992,21 @@ class _QwenWorker:
     def __init__(self, qwen_instance):
         self.qwen = qwen_instance
         self.input_queue = queue.Queue(maxsize=1)
-        self.output_queue = queue.Queue()
+        self.output_queue = queue.Queue(maxsize=4)
         self.running = True
         self.is_busy = False
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
+
+    def _enqueue_result(self, result):
+        try:
+            self.output_queue.put_nowait(result)
+        except queue.Full:
+            try:
+                self.output_queue.get_nowait()
+            except queue.Empty:
+                pass
+            self.output_queue.put_nowait(result)
 
     def _run(self):
         while self.running:
@@ -855,13 +1020,13 @@ class _QwenWorker:
                     desc = self.qwen.describe_scene(frame, context=context_str)
                     duration = time.time() - start
                     logger.info(f"[VLM] Result ({duration:.1f}s): {desc[:120]}")
-                    self.output_queue.put((desc, duration))
+                    self._enqueue_result((desc, duration))
                 except Exception as e:
                     logger.error(f"[QwenWorker] VLM inference failed: {e}")
                     import traceback
                     traceback.print_exc()
                     # Put error result so main loop knows VLM finished
-                    self.output_queue.put((f"VLM Error: {e}", 0.0))
+                    self._enqueue_result((f"VLM Error: {e}", 0.0))
                 finally:
                     self.is_busy = False
                     self.input_queue.task_done()
@@ -883,6 +1048,8 @@ class _QwenWorker:
 
     def stop(self):
         self.running = False
+        if self.thread.is_alive():
+            self.thread.join(timeout=1)
 
 
 class _LLMWorker:
@@ -898,11 +1065,21 @@ class _LLMWorker:
     def __init__(self, fusion_engine):
         self.fusion = fusion_engine
         self.input_queue = queue.Queue(maxsize=1)
-        self.output_queue = queue.Queue()
+        self.output_queue = queue.Queue(maxsize=4)
         self.running = True
         self.is_busy = False
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
+
+    def _enqueue_result(self, result):
+        try:
+            self.output_queue.put_nowait(result)
+        except queue.Full:
+            try:
+                self.output_queue.get_nowait()
+            except queue.Empty:
+                pass
+            self.output_queue.put_nowait(result)
 
     def _run(self):
         while self.running:
@@ -923,7 +1100,7 @@ class _LLMWorker:
                         result_type = "unknown"
 
                     latency_ms = (time.time() - start) * 1000
-                    self.output_queue.put((result_type, answer, latency_ms))
+                    self._enqueue_result((result_type, answer, latency_ms))
                 except Exception as e:
                     logger.error(f"[LLMWorker] {e}")
                     import traceback
@@ -957,3 +1134,5 @@ class _LLMWorker:
 
     def stop(self):
         self.running = False
+        if self.thread.is_alive():
+            self.thread.join(timeout=1)
