@@ -1,0 +1,155 @@
+services:
+  backend:
+    image: ${ECR_REGISTRY}/walksense-backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./.env
+    environment:
+      APP_ENV: "${APP_ENV:-production}"
+      AUTH_COOKIE_SECURE: "true"
+      AUTH_LOCAL_FALLBACK_ON_MONGO_ERROR: "false"
+      LLM_ACTIVE_PROVIDER: "${LLM_ACTIVE_PROVIDER:-vllm}"
+      VLM_ACTIVE_PROVIDER: "${VLM_ACTIVE_PROVIDER:-vllm}"
+      LLM_API_URL: "${LLM_API_URL:-http://vllm-llm:8000/v1}"
+      VLM_API_URL: "${VLM_API_URL:-http://vllm-vlm:8000/v1}"
+      MODEL_ENDPOINT_HEALTHCHECK_ENABLED: "${MODEL_ENDPOINT_HEALTHCHECK_ENABLED:-true}"
+      MODEL_ENDPOINT_HEALTHCHECK_FAIL_FAST: "${MODEL_ENDPOINT_HEALTHCHECK_FAIL_FAST:-false}"
+    volumes:
+      - ./Backend/Inference/Models:/app/Inference/Models:ro
+      - walksense-auth-db:/app/API
+    depends_on:
+      prometheus:
+        condition: service_started
+      vllm-llm:
+        condition: service_started
+      vllm-vlm:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - walksense-net
+
+  frontend:
+    image: ${ECR_REGISTRY}/walksense-frontend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - walksense-net
+
+  vllm-llm:
+    image: vllm/vllm-openai:latest
+    restart: unless-stopped
+    command:
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8000"
+      - "--model"
+      - "${LLM_MODEL_ID:-meta-llama/Llama-3.2-3B-Instruct}"
+      - "--served-model-name"
+      - "${LLM_MODEL_ID:-meta-llama/Llama-3.2-3B-Instruct}"
+      - "--max-model-len"
+      - "4096"
+    environment:
+      HUGGING_FACE_HUB_TOKEN: "${HUGGINGFACE_TOKEN:-}"
+      VLLM_API_KEY: "${VLLM_API_KEY:-}"
+    volumes:
+      - vllm-cache:/root/.cache/huggingface
+    ports:
+      - "8001:8000"
+    networks:
+      - walksense-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/v1/models"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  vllm-vlm:
+    image: vllm/vllm-openai:latest
+    restart: unless-stopped
+    command:
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8000"
+      - "--model"
+      - "${VLM_MODEL_ID:-Qwen/Qwen2.5-VL-3B-Instruct}"
+      - "--served-model-name"
+      - "${VLM_MODEL_ID:-Qwen/Qwen2.5-VL-3B-Instruct}"
+      - "--max-model-len"
+      - "4096"
+      - "--limit-mm-per-prompt"
+      - "image=1"
+    environment:
+      HUGGING_FACE_HUB_TOKEN: "${HUGGINGFACE_TOKEN:-}"
+      VLLM_API_KEY: "${VLLM_API_KEY:-}"
+    volumes:
+      - vllm-cache:/root/.cache/huggingface
+    ports:
+      - "8002:8000"
+    networks:
+      - walksense-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/v1/models"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    networks:
+      - walksense-net
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: "${GF_SECURITY_ADMIN_USER:-admin}"
+      GF_SECURITY_ADMIN_PASSWORD: "${GF_SECURITY_ADMIN_PASSWORD:-walksense-grafana}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s:%(http_port)s/grafana"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - walksense-net
+
+networks:
+  walksense-net:
+    driver: bridge
+
+volumes:
+  walksense-auth-db:
+  prometheus-data:
+  grafana-data:
+  vllm-cache:
