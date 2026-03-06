@@ -1,6 +1,14 @@
 name: WalkSense Deploy to EC2
 
 on:
+  push:
+    branches: [prototype-test]
+    paths:
+      - "Backend/**"
+      - "Frontend/**"
+      - "docker-compose.yml"
+      - "deploy/**"
+      - ".github/workflows/deploy-ec2.yml"
   workflow_dispatch:
     inputs:
       branch:
