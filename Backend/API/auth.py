@@ -27,6 +27,11 @@ import jwt
 from fastapi import Header, HTTPException, status
 from loguru import logger
 
+from API.env_loader import bootstrap_environment
+
+# Ensure environment/secrets are loaded before reading auth settings.
+bootstrap_environment()
+
 
 def _now_ts() -> int:
     return int(time.time())

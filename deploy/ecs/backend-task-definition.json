@@ -1,0 +1,111 @@
+{
+    "family": "walksense-backend",
+    "networkMode": "awsvpc",
+    "requiresCompatibilities": [
+        "FARGATE"
+    ],
+    "cpu": "1024",
+    "memory": "3072",
+    "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/walksense-ecs-execution-role",
+    "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/walksense-ecs-task-role",
+    "containerDefinitions": [
+        {
+            "name": "walksense-backend",
+            "image": "ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/walksense-backend:latest",
+            "essential": true,
+            "portMappings": [
+                {
+                    "containerPort": 8080,
+                    "protocol": "tcp"
+                }
+            ],
+            "environment": [
+                {
+                    "name": "APP_ENV",
+                    "value": "production"
+                },
+                {
+                    "name": "MONGODB_DB",
+                    "value": "walksense"
+                },
+                {
+                    "name": "AUTH_COOKIE_SECURE",
+                    "value": "true"
+                },
+                {
+                    "name": "AUTH_LOCAL_FALLBACK_ON_MONGO_ERROR",
+                    "value": "false"
+                },
+                {
+                    "name": "AWS_REGION",
+                    "value": "us-east-1"
+                }
+            ],
+            "secrets": [
+                {
+                    "name": "GEMINI_API_KEY",
+                    "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:GEMINI_API_KEY"
+                },
+                {
+                    "name": "DEEPGRAM_API_KEY",
+                    "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:DEEPGRAM_API_KEY"
+                },
+                {
+                    "name": "CARTESIA_API_KEY",
+                    "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:CARTESIA_API_KEY"
+                },
+                {
+                    "name": "MONGO_DB_API_KEY",
+                    "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:MONGO_DB_API_KEY"
+                },
+                {
+                    "name": "JWT_ACCESS_SECRET",
+                    "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:JWT_ACCESS_SECRET"
+                },
+                {
+                    "name": "JWT_REFRESH_SECRET",
+                    "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:JWT_REFRESH_SECRET"
+                },
+                {
+                    "name": "CORS_ALLOWED_ORIGINS",
+                    "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:CORS_ALLOWED_ORIGINS"
+                }
+            ],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/walksense-backend",
+                    "awslogs-region": "us-east-1",
+                    "awslogs-stream-prefix": "ecs"
+                }
+            },
+            "healthCheck": {
+                "command": [
+                    "CMD-SHELL",
+                    "curl -f http://localhost:8080/health || exit 1"
+                ],
+                "interval": 30,
+                "timeout": 10,
+                "retries": 3,
+                "startPeriod": 90
+            },
+            "mountPoints": [
+                {
+                    "sourceVolume": "yolo-models",
+                    "containerPath": "/app/Inference/Models/yolo",
+                    "readOnly": true
+                }
+            ]
+        }
+    ],
+    "volumes": [
+        {
+            "name": "yolo-models",
+            "efsVolumeConfiguration": {
+                "fileSystemId": "fs-REPLACE_WITH_EFS_ID",
+                "rootDirectory": "/yolo-models",
+                "transitEncryption": "ENABLED"
+            }
+        }
+    ]
+}

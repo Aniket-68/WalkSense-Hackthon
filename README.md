@@ -16,9 +16,10 @@ WalkSense is a real-time AI assistant that combines **computer vision**, **depth
 
 - **Real-time Object Detection** — YOLO v8/v11 with CUDA acceleration
 - **Monocular Depth Estimation** — MiDaS / Depth Anything V2 for spatial awareness
-- **Intelligent Scene Understanding** — Qwen VLM describes surroundings contextually
+- **Intelligent Scene Understanding** — Gemini VLM describes surroundings contextually
 - **Natural Voice Interaction** — Ask questions via browser mic, get spoken answers
-- **LLM-Powered Reasoning** — Gemma / Phi models answer user queries with scene context
+- **LLM-Powered Reasoning** — Gemini models answer user queries with scene context
+- **Cloud STT Option** — Deepgram multilingual transcription (`nova-3`, `language=multi`)
 - **Multi-tier Safety Alerts** — Critical hazards trigger immediate voice warnings
 - **Browser Camera Mode** — Stream camera from any device (supports cloud/EC2 deployment)
 - **Live Dashboard** — React + Vite frontend with real-time pipeline monitoring
@@ -44,7 +45,7 @@ WalkSense uses a **layered architecture** with a FastAPI server orchestrating al
    ▼          ▼          ▼          ▼
 ┌────────┐ ┌────────┐ ┌────────┐ ┌─────────────┐
 │PERCEPT.│ │REASON. │ │FUSION  │ │INTERACTION  │
-│Camera  │ │VLM     │ │Engine  │ │STT (Whisper)│
+│Camera  │ │VLM     │ │Engine  │ │STT (DG/Whsp)│
 │YOLO    │ │LLM     │ │Router  │ │TTS (pyttsx3)│
 │Depth   │ │        │ │State   │ │Audio Worker │
 │Alerts  │ │        │ │Context │ │Haptics/LED  │
@@ -69,7 +70,7 @@ WalkSense-Hackthon/
 │   ├── Inference/
 │   │   ├── config.json            # All system configuration
 │   │   ├── Perception_Layer/      # Camera, YOLO detector, depth, safety rules
-│   │   ├── Reasoning_Layer/       # VLM (Qwen), LLM (Gemma/Phi)
+│   │   ├── Reasoning_Layer/       # VLM (Gemini/Qwen), LLM (Gemini/local)
 │   │   ├── Fusion_Layer/          # Orchestration, routing, state, context
 │   │   ├── Interaction_Layer/     # STT, TTS, audio, haptics, buzzer, LED
 │   │   ├── Infrastructure/        # Config loader, metrics, performance, sampler
@@ -109,7 +110,7 @@ WalkSense-Hackthon/
 | **Node.js**                 | 18+ (for frontend)                           |
 | **CUDA GPU**                | Recommended (RTX 3060+ for best performance) |
 | **FFmpeg**                  | Required for audio processing                |
-| **LM Studio** or **Ollama** | For VLM/LLM inference                        |
+| **API Keys**                | `GEMINI_API_KEY`, `DEEPGRAM_API_KEY`         |
 
 ### 1. Clone the Repository
 
@@ -124,12 +125,12 @@ cd WalkSense-Hackthon
 cd Backend
 
 # Create & activate virtual environment
-python -m venv venv
+python3 -m venv venv
 venv\Scripts\activate          # Windows
 # source venv/bin/activate     # Linux/Mac
 
 # Install dependencies
-pip install -r Requirements.txt
+pip install -r requirements.txt
 
 # Install CUDA PyTorch (GPU acceleration)
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
@@ -139,18 +140,13 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 
 ```bash
 cd Inference
-python Scripts/setup_project.py
-
-# Or download individual models:
-python Scripts/Download_Model/download_yolo.py
+python3 Scripts/Download_Model/download_yolo.py
 ```
 
-This downloads:
+This downloads local models needed on EC2:
 
-- **YOLO** detection models (YOLOv8n, YOLO11m)
-- **Whisper** speech recognition (small/medium/large)
-- **Depth** estimation (MiDaS, Depth Anything V2)
-- **VLM/LLM** weights (if using local providers)
+- **YOLO** detection models
+- **Depth** estimation models (if enabled)
 
 ### 4. Frontend Setup
 
@@ -159,32 +155,70 @@ cd Frontend
 npm install
 ```
 
-### 5. Start External AI Services
-
-**Option A — LM Studio (recommended for VLM):**
-
-1. Download [LM Studio](https://lmstudio.ai/)
-2. Load `Qwen3-VL-4B` (or any vision-capable model)
-3. Start server on port **1234**
-
-**Option B — Ollama (recommended for LLM):**
+### 5. Configure API Keys
 
 ```bash
-ollama pull gemma3:270m
-ollama serve                    # Runs on port 11434
+cd Backend
+cp .env.example .env
 ```
+
+Set:
+- `GEMINI_API_KEY`
+- `DEEPGRAM_API_KEY`
+- `JWT_ACCESS_SECRET`
+- `JWT_REFRESH_SECRET`
+- `AUTH_BOOTSTRAP_USERNAME`
+- `AUTH_BOOTSTRAP_PASSWORD`
 
 ### 6. Launch
 
 ```bash
 # Terminal 1 — Backend (from Backend/ directory)
-python -m API.server            # Starts on http://localhost:8080
+python3 -m API.server           # Starts on http://localhost:8080
 
 # Terminal 2 — Frontend (from Frontend/ directory)
 npm run dev                     # Starts on http://localhost:5173
 ```
 
 Open **http://localhost:5173** in your browser. Click **Start** to begin the pipeline.
+
+### Authentication
+
+The dashboard now requires login.
+
+1. Configure auth env in `Backend/.env`:
+   - `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`
+   - `AUTH_BOOTSTRAP_USERNAME`, `AUTH_BOOTSTRAP_PASSWORD` (dev only)
+2. For managed provisioning, disable bootstrap and create users via:
+   - `AUTH_BOOTSTRAP_ENABLED=false`
+   - `python3 -m API.provision_user --username <user> --password '<strong-password>'`
+3. In production:
+   - `APP_ENV=production` (forces secure refresh cookies)
+   - Set `AUTH_COOKIE_CROSS_SITE=true` only when cross-site cookies are required.
+4. Sign in from the frontend login screen.
+5. Access tokens are short-lived and refreshed automatically.
+6. Logout revokes the full token family.
+7. Login/refresh endpoints are rate-limited against brute-force attacks.
+8. Auth housekeeping runs periodically to prune old audit/rate-limit rows:
+   - `AUTH_HOUSEKEEPING_ENABLED=true`
+   - `AUTH_CLEANUP_INTERVAL_SECONDS=3600`
+   - `AUTH_AUDIT_RETENTION_SECONDS=2592000`
+   - `AUTH_RATE_LIMIT_RETENTION_SECONDS=86400`
+9. Monitoring hooks:
+   - Prometheus-style auth metrics: `GET /metrics/auth`
+   - Repeated compromise alert threshold:
+     - `AUTH_ALERT_WINDOW_SECONDS`
+     - `AUTH_ALERT_COMPROMISE_THRESHOLD`
+     - `AUTH_ALERT_COOLDOWN_SECONDS`
+     - Optional CloudWatch metrics via `AUTH_ALERT_CLOUDWATCH_ENABLED=true`
+
+---
+
+## CI
+
+- GitHub Actions workflow: `.github/workflows/auth-integration.yml`
+- Runs `Backend/tests/test_auth_integration.py` on push/PR changes under `Backend/**`
+- Uses lightweight deps from `Backend/requirements-auth-tests.txt`
 
 ---
 
@@ -198,9 +232,9 @@ Each AI component supports **multiple providers** — switch by changing `active
 
 | Component    | Providers                                                                     | Default       |
 | ------------ | ----------------------------------------------------------------------------- | ------------- |
-| **VLM**      | LM Studio, Ollama, Local HuggingFace, OpenAI, Azure, AWS Bedrock, Anthropic   | `lm_studio`   |
-| **LLM**      | Ollama, LM Studio, Local HuggingFace, OpenAI, Azure, AWS Bedrock, Together AI | `ollama`      |
-| **STT**      | Local Whisper (faster-whisper), OpenAI, Google, Azure, AWS                    | `local`       |
+| **VLM**      | Gemini, LM Studio, Ollama, Local HuggingFace, OpenAI, Azure, AWS Bedrock, Anthropic | `gemini` |
+| **LLM**      | Gemini, Ollama, LM Studio, Local HuggingFace, OpenAI, Azure, AWS Bedrock, Together AI | `gemini` |
+| **STT**      | Deepgram, Local Whisper (faster-whisper), OpenAI, Google, Azure, AWS           | `deepgram`    |
 | **TTS**      | pyttsx3, Coqui, OpenAI, Google, Azure, AWS Polly                              | `local`       |
 | **Depth**    | MiDaS Small/Large, Depth Anything V2 Small/Base                               | `midas_small` |
 | **Detector** | YOLOv8n, YOLO11m, Custom fine-tuned                                           | `yolo11m`     |
@@ -216,6 +250,45 @@ Each AI component supports **multiple providers** — switch by changing `active
 - **hardware** — USB/built-in camera via OpenCV
 - **simulation** — Loop a video file for testing
 - **browser** — Frontend streams camera via WebSocket (ideal for cloud/EC2 deployment)
+
+---
+
+## ☁️ EC2 Deployment (Gemini + Deepgram)
+
+Use this profile to run YOLO + pipeline on EC2 and keep camera on browser clients:
+
+1. EC2 requirements:
+   - Ubuntu 22.04+
+   - NVIDIA driver + CUDA (for YOLO GPU)
+   - Open ports: `8080` (backend), `5173` (if serving Vite dev), `443` (recommended with reverse proxy)
+2. Backend on EC2:
+   - `camera.mode = "browser"` in `Backend/Inference/config.json`
+   - `stt.active_provider = "deepgram"`
+   - `vlm.active_provider = "gemini"` with `model_id = "gemini-2.5-flash"`
+   - `llm.active_provider = "gemini"` with `model_id = "gemini-2.5-flash-lite"`
+3. Frontend:
+   - Set `VITE_API_URL` to your EC2/API domain
+   - Keep `VITE_CAMERA_MODE=browser`
+
+Quick backend run on EC2:
+
+```bash
+cd Backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python3 -m API.server
+```
+
+For production, use included service template:
+
+```bash
+sudo cp Backend/deploy/ec2/walksense-backend.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now walksense-backend
+```
+
+For internet access, place Nginx/ALB in front of port `8080` and terminate HTTPS.
 
 ---
 
@@ -260,14 +333,22 @@ The FastAPI backend exposes these endpoints:
 
 | Method | Endpoint            | Description                            |
 | ------ | ------------------- | -------------------------------------- |
+| `POST` | `/api/auth/login`   | Login with username/password           |
+| `POST` | `/api/auth/refresh` | Rotate refresh token and get new access|
+| `POST` | `/api/auth/logout`  | Revoke token family and logout         |
+| `POST` | `/api/auth/revoke-family` | Emergency revoke for current session |
+| `GET`  | `/api/auth/me`      | Get current authenticated user         |
 | `POST` | `/api/system/start` | Start the AI pipeline                  |
 | `POST` | `/api/system/stop`  | Stop the AI pipeline                   |
-| `GET`  | `/api/system/state` | Current pipeline state (JSON)          |
-| `POST` | `/api/voice-query`  | Upload audio → transcribe → LLM answer |
-| `POST` | `/api/text-query`   | Send text query → LLM answer           |
+| `GET`  | `/api/system/status`| Current pipeline state (JSON)          |
+| `POST` | `/api/voice-query`  | Upload audio → transcribe → query submit |
+| `POST` | `/api/query`        | Send text query                        |
 | `GET`  | `/api/camera/feed`  | MJPEG video stream                     |
 | `WS`   | `/ws`               | Real-time pipeline state updates       |
 | `WS`   | `/ws/camera`        | Browser camera frame ingestion         |
+
+All non-auth endpoints are protected by bearer access JWT.
+Refresh tokens are HttpOnly cookies and rotated on `/api/auth/refresh`.
 
 ---
 
@@ -304,17 +385,19 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 
 Verify: `python -c "import torch; print(torch.cuda.is_available())"`
 
-### VLM Not Responding
+### Gemini VLM/LLM Not Responding
 
-1. Ensure **LM Studio** is running with a vision model loaded
-2. Check the server URL: `curl http://localhost:1234/v1/models`
-3. Or switch to Ollama: set `vlm.active_provider` to `"ollama"` in config
+1. Ensure `GEMINI_API_KEY` is set in `Backend/.env`
+2. Confirm model IDs in `config.json`:
+   - `gemini-2.5-flash` (VLM)
+   - `gemini-2.5-flash-lite` (LLM)
+3. Check backend logs for `[VLM] Gemini` or `[LLM]` errors
 
 ### STT Not Transcribing / Clipping Words
 
 1. Ensure FFmpeg is installed: `ffmpeg -version`
 2. Allow microphone access in your browser
-3. Check logs for `[STT]` messages in the backend terminal
+3. Ensure `DEEPGRAM_API_KEY` is set and check `[STT] Deepgram` logs
 
 ### Frontend Can't Connect
 
@@ -326,10 +409,10 @@ Verify: `python -c "import torch; print(torch.cuda.is_available())"`
 
 ## 🔒 Privacy & Security
 
-- **Local-First** — All processing runs on-device by default
-- **No Telemetry** — Zero data collection or external communication
+- **Hybrid Processing** — Detection/depth local on EC2, optional cloud reasoning/STT
+- **Configurable Providers** — Switch between local and API providers via `config.json`
 - **No Storage** — Video frames are processed in memory, never saved to disk
-- **Optional Cloud** — Users can opt-in to cloud APIs (OpenAI, Azure, AWS) via config
+- **Optional Cloud** — Gemini and Deepgram are enabled by default in this profile
 
 ---
 

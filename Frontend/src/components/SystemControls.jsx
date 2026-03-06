@@ -1,7 +1,12 @@
 import { useState } from "react";
 import { API_BASE } from "../config";
 
-export default function SystemControls({ state, onStartStop }) {
+export default function SystemControls({
+  state,
+  onStartStop,
+  authFetch,
+  onToggleMute,
+}) {
   const [loading, setLoading] = useState(false);
   const systemStatus = state?.system_status || "IDLE";
   const isRunning = systemStatus === "RUNNING";
@@ -13,20 +18,29 @@ export default function SystemControls({ state, onStartStop }) {
   const handleToggle = async () => {
     if (isTransitioning) return;
     setLoading(true);
+    const request = authFetch || fetch;
     try {
-      const endpoint = isRunning ? "/api/system/stop" : "/api/system/start";
-      await fetch(`${API_BASE}${endpoint}`, { method: "POST" });
+      if (onStartStop) {
+        await onStartStop();
+      } else {
+        const endpoint = isRunning ? "/api/system/stop" : "/api/system/start";
+        await request(`${API_BASE}${endpoint}`, { method: "POST" });
+      }
     } catch (err) {
       console.error("Toggle failed:", err);
     } finally {
       setLoading(false);
     }
-    if (onStartStop) onStartStop();
   };
 
   const handleMute = async () => {
+    if (onToggleMute) {
+      await onToggleMute();
+      return;
+    }
+    const request = authFetch || fetch;
     try {
-      await fetch(`${API_BASE}/api/system/mute`, { method: "POST" });
+      await request(`${API_BASE}/api/system/mute`, { method: "POST" });
     } catch (err) {
       console.error("Mute failed:", err);
     }

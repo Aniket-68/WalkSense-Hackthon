@@ -34,20 +34,44 @@ class Config:
     @classmethod
     def get(cls, key_path, default=None):
         """
-        Get a configuration value using a dot-separated path (e.g. 'vlm.url')
+        Get a configuration value using a dot-separated path (e.g. 'vlm.url').
+        Environment variables take precedence: dot-path is uppercased and dots
+        replaced with underscores, e.g. 'vlm.active_provider' → VLM_ACTIVE_PROVIDER.
         """
         if not cls._data:
             cls.load()
-            
+
+        # ── Env var override ──────────────────────────────────────────
+        env_key = key_path.replace(".", "_").upper()
+        env_val = os.environ.get(env_key)
+        if env_val is not None:
+            # Coerce to bool/int where the JSON value type suggests it
+            keys = key_path.split(".")
+            val = cls._data
+            try:
+                for key in keys:
+                    val = val[key]
+                if isinstance(val, bool):
+                    return env_val.strip().lower() in {"1", "true", "yes", "on"}
+                if isinstance(val, int):
+                    return int(env_val)
+                if isinstance(val, float):
+                    return float(env_val)
+            except (KeyError, TypeError):
+                pass
+            return env_val
+
+        # ── config.json lookup ────────────────────────────────────────
         keys = key_path.split(".")
         val = cls._data
-        
+
         try:
             for key in keys:
                 val = val[key]
             return val
         except (KeyError, TypeError):
             return default
+
 
     @classmethod
     def resolve_path(cls, relative_path: str) -> str:

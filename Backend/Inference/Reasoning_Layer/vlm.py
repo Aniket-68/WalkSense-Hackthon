@@ -5,11 +5,15 @@ import cv2
 import os
 import base64
 import requests
-from pathlib import Path
 from PIL import Image
 from io import BytesIO
-from transformers import AutoModelForImageTextToText, AutoProcessor
 from loguru import logger
+
+try:
+    from transformers import AutoModelForImageTextToText, AutoProcessor
+except ImportError:
+    AutoModelForImageTextToText = None
+    AutoProcessor = None
 
 try:
     from qwen_vl_utils import process_vision_info
@@ -20,12 +24,12 @@ except ImportError:
 class QwenVLM:
     """
     Qwen Vision-Language Model with multiple backend support:
-    - 'lm_studio': Use LM Studio local API server
+    - 'lm_studio'/'vllm': OpenAI-compatible chat-completions API server
     - 'ollama': Use Ollama local API server
     - 'huggingface': Use downloaded HuggingFace model
     """
     
-    def __init__(self, backend=None, model_id=None, lm_studio_url=None):
+    def __init__(self, backend=None, model_id=None, lm_studio_url=None, api_key=None):
         """
         Initialization pulls from the Central Registry if arguments are not provided.
         """
@@ -35,6 +39,7 @@ class QwenVLM:
         # Get provider-specific settings
         provider_config = f"vlm.providers.{self.backend}"
         self.url = lm_studio_url or Config.get(f"{provider_config}.url")
+        self.api_key = api_key
 
         # For local / huggingface_api: resolve model_id from active_model → models dict
         if model_id:
@@ -45,18 +50,41 @@ class QwenVLM:
         else:
             self.model_id = Config.get(f"{provider_config}.model_id")
         
-        if self.backend == "lm_studio":
+        if self.backend in ("lm_studio", "vllm"):
             self._init_lm_studio()
         elif self.backend == "ollama":
             self._init_ollama()
+        elif self.backend == "gemini":
+            self._init_gemini()
         elif self.backend in ("local", "huggingface", "huggingface_api"):
             self._init_huggingface()
         else:
             raise ValueError(f"Unknown backend: {self.backend}")
+
+    def _init_gemini(self):
+        """Initialize Gemini VLM backend."""
+        from Infrastructure.config import Config
+
+        provider_config = f"vlm.providers.{self.backend}"
+        api_key_env = Config.get(f"{provider_config}.api_key_env", "GEMINI_API_KEY")
+        key = self.api_key or os.getenv(api_key_env)
+
+        if not key:
+            raise ValueError(f"Gemini API key not found in env var: {api_key_env}")
+
+        try:
+            from google import genai
+        except ImportError as e:
+            raise ImportError("google-genai not installed. Run: pip install google-genai") from e
+
+        self.gemini_client = genai.Client(api_key=key)
+        logger.info(f"Using Gemini VLM backend with model: {self.model_id}")
     
     def _init_huggingface(self):
         """Initialize local HuggingFace model (supports any VLM architecture)"""
         from Infrastructure.config import Config
+        if AutoProcessor is None or AutoModelForImageTextToText is None:
+            raise ImportError("transformers is required for local/huggingface VLM backends")
         logger.info(f"Loading local model: {self.model_id}")
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         
@@ -90,7 +118,11 @@ class QwenVLM:
         logger.info(f"Using LM Studio backend: {self.url}")
         
         try:
-            response = requests.get(f"{self.url}/models", timeout=5)
+            response = requests.get(
+                f"{self.url.rstrip('/')}/models",
+                headers=self._api_headers(),
+                timeout=5,
+            )
             if response.status_code == 200:
                 models = response.json()
                 if models.get('data'):
@@ -103,6 +135,33 @@ class QwenVLM:
         except Exception as e:
             print(f"[QWEN WARNING] API offline: {e}")
             self.active_model_id = self.model_id
+
+    def _api_headers(self) -> dict:
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        return headers
+
+    def check_health(self) -> bool:
+        """Health check for the selected backend."""
+        try:
+            if self.backend in ("lm_studio", "vllm"):
+                response = requests.get(
+                    f"{self.url.rstrip('/')}/models",
+                    headers=self._api_headers(),
+                    timeout=3,
+                )
+                return response.status_code == 200
+            if self.backend == "ollama":
+                response = requests.get(
+                    f"{self.url.replace('/api/generate', '').rstrip('/')}/",
+                    timeout=3,
+                )
+                return response.status_code == 200
+            # Gemini/local backends are initialized in-process.
+            return True
+        except Exception:
+            return False
     
     def _init_ollama(self):
         """Initialize Ollama backend"""
@@ -164,8 +223,9 @@ class QwenVLM:
             
             # Make request
             response = requests.post(
-                f"{self.url}/chat/completions",
+                f"{self.url.rstrip('/')}/chat/completions",
                 json=payload,
+                headers=self._api_headers(),
                 timeout=30
             )
             
@@ -298,6 +358,61 @@ class QwenVLM:
         )[0]
         
         return output_text.strip()
+
+    def describe_scene_gemini(self, frame, context=""):
+        """Use Gemini API for scene description."""
+        from Infrastructure.config import Config
+
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        pil_image = Image.fromarray(rgb_frame)
+
+        if "USER QUESTION:" in context:
+            query_part = context.split("USER QUESTION:")[1].strip()
+            det_part = context.split("USER QUESTION:")[0].strip()
+            prompt = (
+                f"User question: '{query_part}'. "
+                f"Ground your response strictly in this image. "
+                f"Known detector labels: {det_part}. "
+                "Answer in <= 40 words and prioritize safety-relevant details."
+            )
+        else:
+            prompt = (
+                "Describe the scene for a visually impaired user. "
+                "Mention navigation hazards and obstacle positions. Keep it <= 30 words."
+            )
+            if context:
+                prompt = f"Known detector labels: {context}. {prompt}"
+
+        provider_config = f"vlm.providers.{self.backend}"
+        temperature = Config.get(f"{provider_config}.temperature", 0.4)
+        max_output_tokens = Config.get(f"{provider_config}.max_output_tokens", 120)
+
+        try:
+            response = self.gemini_client.models.generate_content(
+                model=self.model_id,
+                contents=[prompt, pil_image],
+                config={
+                    "temperature": temperature,
+                    "max_output_tokens": max_output_tokens,
+                },
+            )
+            text = (getattr(response, "text", None) or "").strip()
+            if not text:
+                candidates = getattr(response, "candidates", None) or []
+                if candidates:
+                    content = getattr(candidates[0], "content", None)
+                    if content:
+                        parts = getattr(content, "parts", None) or []
+                        for part in parts:
+                            part_text = (getattr(part, "text", None) or "").strip()
+                            if part_text:
+                                text = part_text
+                                break
+            text = text.strip()
+            return text if text else "I cannot confirm visual details right now."
+        except Exception as e:
+            logger.error(f"[VLM] Gemini request failed: {e}")
+            return f"Gemini error: {str(e)}"
     
     def describe_scene(self, frame, context=""):
         """
@@ -309,9 +424,11 @@ class QwenVLM:
         Returns:
             str: Scene description
         """
-        if self.backend == "lm_studio":
+        if self.backend in ("lm_studio", "vllm"):
             return self.describe_scene_lm_studio(frame, context)
         elif self.backend == "ollama":
             return self.describe_scene_ollama(frame, context)
+        elif self.backend == "gemini":
+            return self.describe_scene_gemini(frame, context)
         else:
             return self.describe_scene_huggingface(frame, context)

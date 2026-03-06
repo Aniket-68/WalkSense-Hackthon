@@ -21,6 +21,13 @@ from loguru import logger
 from dataclasses import dataclass, field
 
 
+def _bool_env(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 class SystemManager:
     """Central manager for the WalkSense processing pipeline.
     
@@ -67,6 +74,8 @@ class SystemManager:
         self._spatial_summary = ""
         self._current_query: Optional[str] = None
         self._current_response: Optional[str] = None
+        # Guards against enqueuing multiple VLM-grounded LLM jobs for one query.
+        self._llm_query_in_flight = False
         self._dialogue_history = deque(maxlen=int(os.getenv("SYSTEM_DIALOGUE_HISTORY_MAX", "200")))
         self._history_lock = threading.Lock()
         self._detections: list = []
@@ -135,40 +144,41 @@ class SystemManager:
             pass
 
         # VLM config
-        vlm_provider = Config.get("vlm.active_provider", "lm_studio")
+        vlm_provider = (os.getenv("VLM_ACTIVE_PROVIDER") or Config.get("vlm.active_provider", "lm_studio")).strip()
         vlm_config_path = f"vlm.providers.{vlm_provider}"
-        vlm_url = Config.get(f"{vlm_config_path}.url")
+        vlm_url = (os.getenv("VLM_API_URL") or Config.get(f"{vlm_config_path}.url", "")).strip()
         # For local/huggingface_api, resolve model_id from active_model → models dict
-        if vlm_provider in ("local", "huggingface_api"):
+        vlm_model_override = (os.getenv("VLM_MODEL_ID") or "").strip()
+        if vlm_model_override:
+            vlm_model = vlm_model_override
+        elif vlm_provider in ("local", "huggingface_api"):
             _vlm_active = Config.get(f"{vlm_config_path}.active_model")
             vlm_model = Config.get(f"{vlm_config_path}.models.{_vlm_active}.model_id") if _vlm_active else Config.get(f"{vlm_config_path}.model_id")
         else:
             vlm_model = Config.get(f"{vlm_config_path}.model_id")
-        vlm_api_key = None
-        if vlm_provider == "gemini":
-            vlm_api_env = Config.get(f"{vlm_config_path}.api_key_env", "GEMINI_API_KEY")
-            vlm_api_key = os.getenv(vlm_api_env)
-            if not vlm_api_key:
-                logger.warning(f"[SystemManager] Gemini VLM API key not found in env var: {vlm_api_env}")
+        vlm_api_env = Config.get(f"{vlm_config_path}.api_key_env")
+        vlm_api_key = os.getenv(vlm_api_env) if vlm_api_env else None
+        if vlm_provider == "gemini" and not vlm_api_key:
+            logger.warning(f"[SystemManager] Gemini VLM API key not found in env var: {vlm_api_env or 'GEMINI_API_KEY'}")
 
         # LLM config
-        llm_provider = Config.get("llm.active_provider", "ollama")
+        llm_provider = (os.getenv("LLM_ACTIVE_PROVIDER") or Config.get("llm.active_provider", "ollama")).strip()
         llm_config_path = f"llm.providers.{llm_provider}"
-        llm_url = Config.get(f"{llm_config_path}.url", "")
+        llm_url = (os.getenv("LLM_API_URL") or Config.get(f"{llm_config_path}.url", "")).strip()
         # For local/huggingface_api, resolve model_id from active_model → models dict
-        if llm_provider in ("local", "huggingface_api"):
+        llm_model_override = (os.getenv("LLM_MODEL_ID") or "").strip()
+        if llm_model_override:
+            llm_model = llm_model_override
+        elif llm_provider in ("local", "huggingface_api"):
             _llm_active = Config.get(f"{llm_config_path}.active_model")
             llm_model = Config.get(f"{llm_config_path}.models.{_llm_active}.model_id") if _llm_active else Config.get(f"{llm_config_path}.model_id")
         else:
             llm_model = Config.get(f"{llm_config_path}.model_id")
-        
-        # API key for Gemini (read from env var specified in config)
-        llm_api_key = None
-        if llm_provider == "gemini":
-            api_key_env = Config.get(f"{llm_config_path}.api_key_env", "GEMINI_API_KEY")
-            llm_api_key = os.getenv(api_key_env)
-            if not llm_api_key:
-                logger.warning(f"[SystemManager] Gemini API key not found in env var: {api_key_env}")
+
+        llm_api_env = Config.get(f"{llm_config_path}.api_key_env")
+        llm_api_key = os.getenv(llm_api_env) if llm_api_env else None
+        if llm_provider == "gemini" and not llm_api_key:
+            logger.warning(f"[SystemManager] Gemini API key not found in env var: {llm_api_env or 'GEMINI_API_KEY'}")
 
         # Perception thresholds
         sampling = Config.get("perception.sampling_interval", 150)
@@ -225,6 +235,7 @@ class SystemManager:
             lm_studio_url=vlm_url,
             api_key=vlm_api_key,
         )
+        self._run_model_endpoint_healthchecks(llm_provider=llm_provider, vlm_provider=vlm_provider)
 
         self._sampler = FrameSampler(every_n_frames=sampling)
         self._scene_detector = SceneChangeDetector(threshold=scene_thresh)
@@ -239,6 +250,38 @@ class SystemManager:
         self._preload_whisper(Config)
 
         logger.info("[SystemManager] All components initialized")
+
+    def _run_model_endpoint_healthchecks(self, *, llm_provider: str, vlm_provider: str) -> None:
+        """
+        Startup connectivity checks for remote model endpoints (vLLM/LM Studio/Ollama/etc).
+        """
+        if not _bool_env("MODEL_ENDPOINT_HEALTHCHECK_ENABLED", True):
+            return
+
+        fail_fast = _bool_env("MODEL_ENDPOINT_HEALTHCHECK_FAIL_FAST", False)
+        failures = []
+
+        checks = [
+            ("LLM", llm_provider, getattr(self._fusion, "llm", None)),
+            ("VLM", vlm_provider, self._qwen),
+        ]
+
+        for label, provider, adapter in checks:
+            if adapter is None:
+                continue
+            checker = getattr(adapter, "check_health", None)
+            if not callable(checker):
+                continue
+            ok = bool(checker())
+            if ok:
+                logger.info(f"[MODEL_HEALTH] {label} provider '{provider}' is reachable")
+            else:
+                msg = f"{label} provider '{provider}' is not reachable during startup"
+                failures.append(msg)
+                logger.warning(f"[MODEL_HEALTH] {msg}")
+
+        if failures and fail_fast:
+            raise RuntimeError("; ".join(failures))
 
     def _preload_whisper(self, Config):
         """Pre-load Whisper model during startup to avoid lag on first voice query."""
@@ -482,6 +525,7 @@ class SystemManager:
             self._query_queue.put_nowait(text)
             logger.warning("[SystemManager] Query queue full; dropped oldest pending query")
         self._current_query = text
+        self._llm_query_in_flight = False
         self._pipeline_state["stt"]["active"] = True
         with self._history_lock:
             self._dialogue_history.append({
@@ -856,6 +900,7 @@ class SystemManager:
                 try:
                     query = self._query_queue.get_nowait()
                     self._current_query = query
+                    self._llm_query_in_flight = False
                     self._pipeline_state["stt"]["active"] = True
 
                     # Per architecture: just set pending_query on FusionEngine
@@ -874,7 +919,8 @@ class SystemManager:
                     self._pipeline_state["llm"]["last_latency_ms"] = round(llm_ms, 1)
                     self._pipeline_state["llm"]["is_processing"] = False
 
-                    if answer:
+                    # Only consume VLM-grounded results for pending user queries.
+                    if result_type == "vlm_grounded" and answer and self._llm_query_in_flight:
                         self._current_response = answer
                         with self._history_lock:
                             self._dialogue_history.append({
@@ -886,7 +932,10 @@ class SystemManager:
                         self._pipeline_state["tts"]["is_speaking"] = True
                         # Emit to remote clients
                         self.emit_tts(answer, priority="response")
+                    elif result_type == "vlm_grounded" and answer:
+                        logger.debug("[Pipeline] Ignoring stale/duplicate VLM-grounded LLM result")
 
+                    self._llm_query_in_flight = False
                     self._current_query = None
 
                 # --- VLM Processing ---
@@ -903,7 +952,12 @@ class SystemManager:
 
                         if self._current_query:
                             # Submit VLM-grounded LLM query (non-blocking)
-                            if self._llm_worker and self._llm_worker.process_vlm_query(new_desc):
+                            if (
+                                not self._llm_query_in_flight
+                                and self._llm_worker
+                                and self._llm_worker.process_vlm_query(new_desc)
+                            ):
+                                self._llm_query_in_flight = True
                                 self._pipeline_state["llm"]["active"] = True
                                 self._pipeline_state["llm"]["is_processing"] = True
                         else:

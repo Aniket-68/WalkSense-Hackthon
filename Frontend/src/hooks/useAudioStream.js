@@ -10,11 +10,16 @@
  */
 
 import { useEffect, useRef, useCallback } from "react";
-import { WS_URL } from "../config";
+import { buildWsUrl } from "../config";
 
-const AUDIO_WS_URL = WS_URL.replace(/\/ws$/, "/ws/audio");
-
-export function useAudioStream(state, { enabled = true, audioPermitted = true } = {}) {
+export function useAudioStream(
+  state,
+  {
+    enabled = true,
+    audioPermitted = true,
+    accessToken = "",
+  } = {},
+) {
   const wsRef = useRef(null);
   const ctxRef = useRef(null);
   const queueRef = useRef([]);
@@ -32,7 +37,7 @@ export function useAudioStream(state, { enabled = true, audioPermitted = true } 
   }, []);
 
   // Play queued audio buffers one at a time
-  const playNext = useCallback(() => {
+  const playNext = useCallback(function playNextImpl() {
     if (playingRef.current || queueRef.current.length === 0) return;
     playingRef.current = true;
 
@@ -47,14 +52,14 @@ export function useAudioStream(state, { enabled = true, audioPermitted = true } 
         source.connect(ctx.destination);
         source.onended = () => {
           playingRef.current = false;
-          playNext(); // chain next
+          playNextImpl(); // chain next
         };
         source.start(0);
       })
       .catch((err) => {
         console.error("[AudioStream] Decode error:", err);
         playingRef.current = false;
-        playNext();
+        playNextImpl();
       });
   }, [getAudioCtx]);
 
@@ -65,7 +70,9 @@ export function useAudioStream(state, { enabled = true, audioPermitted = true } 
     // Only connect when server-side audio is expected
     if (mode !== "server" && mode !== "hybrid") return;
 
-    const ws = new WebSocket(AUDIO_WS_URL);
+    if (!accessToken) return;
+
+    const ws = new WebSocket(buildWsUrl("/ws/audio", accessToken));
     ws.binaryType = "arraybuffer";
 
     ws.onopen = () => {
@@ -99,7 +106,7 @@ export function useAudioStream(state, { enabled = true, audioPermitted = true } 
       queueRef.current = [];
       playingRef.current = false;
     };
-  }, [enabled, audioPermitted, state?.tts_remote_mode, playNext]);
+  }, [enabled, audioPermitted, accessToken, state?.tts_remote_mode, playNext]);
 
   // Cleanup AudioContext on unmount
   useEffect(() => {

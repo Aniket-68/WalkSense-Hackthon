@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { useWebSocket } from "./hooks/useWebSocket";
+import { useAuth } from "./hooks/useAuth";
 import { useTTS } from "./hooks/useTTS";
 import { useAudioStream } from "./hooks/useAudioStream";
 import { useAudioPermission } from "./hooks/useAudioPermission";
@@ -7,10 +9,16 @@ import QueryDisplay from "./components/QueryDisplay";
 import SystemControls from "./components/SystemControls";
 import PipelineMonitor from "./components/PipelineMonitor";
 import KeyboardShortcuts from "./components/KeyboardShortcuts";
+import LoginPanel from "./components/LoginPanel";
+import SignupPanel from "./components/SignupPanel";
+import MobileControlDock from "./components/MobileControlDock";
 import { API_BASE } from "./config";
 
 function App() {
-  const { state, connected } = useWebSocket();
+  const auth = useAuth();
+  const [showSignup, setShowSignup] = useState(false);
+  const [voiceState, setVoiceState] = useState("idle");
+  const { state, connected } = useWebSocket(auth.accessToken, auth.refreshSession);
 
   // Audio permission — required before any browser audio can play
   const needsAudio =
@@ -23,7 +31,10 @@ function App() {
 
   // Remote TTS — hooks auto-activate based on state.tts_remote_mode
   useTTS(state, { audioPermitted }); // Option A: browser Web Speech API
-  useAudioStream(state, { audioPermitted }); // Option B: server-synthesized audio stream
+  useAudioStream(state, {
+    audioPermitted,
+    accessToken: auth.accessToken,
+  }); // Option B: server-synthesized audio stream
 
   const systemStatus = state?.system_status || "IDLE";
   const isRunning = systemStatus === "RUNNING";
@@ -37,7 +48,7 @@ function App() {
     if (!audioPermitted) requestAudio();
     try {
       const endpoint = isRunning ? "/api/system/stop" : "/api/system/start";
-      await fetch(`${API_BASE}${endpoint}`, { method: "POST" });
+      await auth.authFetch(`${API_BASE}${endpoint}`, { method: "POST" });
     } catch (err) {
       console.error("Start/Stop failed:", err);
     }
@@ -50,6 +61,46 @@ function App() {
       voiceBtn.click();
     }
   };
+
+  const handleToggleMute = async () => {
+    try {
+      await auth.authFetch(`${API_BASE}/api/system/mute`, { method: "POST" });
+    } catch (err) {
+      console.error("Mute failed:", err);
+    }
+  };
+
+  if (auth.isInitializing) {
+    return (
+      <div className="login-screen">
+        <div className="login-card card">
+          <h2>WalkSense</h2>
+          <p>Initializing session...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!auth.isAuthenticated) {
+    if (showSignup) {
+      return (
+        <SignupPanel
+          onSignup={(bundle) => {
+            auth.loginWithBundle(bundle);
+            setShowSignup(false);
+          }}
+          onSwitchToLogin={() => setShowSignup(false)}
+        />
+      );
+    }
+    return (
+      <LoginPanel
+        onLogin={auth.login}
+        error={auth.authError}
+        onSwitchToSignup={() => setShowSignup(true)}
+      />
+    );
+  }
 
   return (
     <div className="app-layout">
@@ -111,6 +162,10 @@ function App() {
         </div>
 
         <div className="header-status">
+          <span className="auth-user mono">{auth.user?.username}</span>
+          <button className="logout-btn" onClick={auth.logout}>
+            Logout
+          </button>
           <div className="connection-indicator">
             <div
               className={`connection-dot ${connected ? "connected" : "disconnected"}`}
@@ -154,18 +209,43 @@ function App() {
       <main className="main-content">
         {/* Left: Camera */}
         <div className="left-panel">
-          <CameraFeed state={state} />
+          <div className="camera-stack">
+            <CameraFeed state={state} accessToken={auth.accessToken} />
+            <div className="mobile-pipeline-overlay">
+              <PipelineMonitor state={state} variant="compact" />
+            </div>
+          </div>
         </div>
 
         {/* Right: Dialogue + Controls */}
         <div className="right-panel">
-          <QueryDisplay state={state} />
-          <SystemControls state={state} onStartStop={handleStartStop} />
+          <QueryDisplay
+            state={state}
+            authFetch={auth.authFetch}
+            onVoiceStateChange={setVoiceState}
+          />
+          <SystemControls
+            state={state}
+            onStartStop={handleStartStop}
+            authFetch={auth.authFetch}
+            onToggleMute={handleToggleMute}
+          />
         </div>
       </main>
 
       {/* ─── Pipeline Monitor ─── */}
-      <PipelineMonitor state={state} />
+      <div className="desktop-pipeline-wrap">
+        <PipelineMonitor state={state} />
+      </div>
+
+      <MobileControlDock
+        systemStatus={systemStatus}
+        isMuted={Boolean(state?.muted)}
+        voiceState={voiceState}
+        onListen={handleListen}
+        onStartStop={handleStartStop}
+        onToggleMute={handleToggleMute}
+      />
     </div>
   );
 }

@@ -14,7 +14,7 @@ class LLMReasoner:
     def __init__(self, backend="lm_studio", api_url="http://localhost:1234/v1", model_name="microsoft/phi-4-mini-reasoning", api_key=None):
         """
         Args:
-            backend: "lm_studio", "ollama", "gemini", "local", or "openai"
+            backend: "lm_studio", "vllm", "ollama", "gemini", "local", or "openai"
             api_url: API endpoint URL
             model_name: Model identifier (or HuggingFace repo id for local)
             api_key: API key for Gemini (optional, can use env var)
@@ -29,14 +29,13 @@ class LLMReasoner:
         # Initialize Gemini if needed
         if self.backend == "gemini":
             try:
-                import google.generativeai as genai
+                from google import genai
                 key = self.api_key or os.getenv("GEMINI_API_KEY")
                 if not key:
                     raise ValueError("Gemini API key not found. Set GEMINI_API_KEY env var or pass api_key parameter.")
-                genai.configure(api_key=key)
-                self.gemini_model = genai.GenerativeModel(self.model_name)
+                self.gemini_client = genai.Client(api_key=key)
             except ImportError:
-                raise ImportError("google-generativeai not installed. Run: pip install google-generativeai")
+                raise ImportError("google-genai not installed. Run: pip install google-genai")
         
         # Initialize local HuggingFace model if needed
         if self.backend == "local":
@@ -56,16 +55,30 @@ GUIDELINES:
 3. ALWAYS prioritize visual proof. If you don't see it, politely say so.
 4. Keep responses brief (under 25 words) and actionable."""
 
+    def _api_headers(self) -> dict:
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        return headers
+
     def check_health(self):
         """
         Verify connection to the backend
         """
         try:
+            if self.backend == "gemini":
+                return True
+            if self.backend == "local":
+                return self._local_model is not None and self._local_tokenizer is not None
             if self.backend == "ollama":
                 resp = requests.get(f"{self.api_url.replace('/api/generate', '')}/", timeout=1) # Ollama root
                 return resp.status_code == 200
             else:
-                resp = requests.get(f"{self.api_url}/models", timeout=1)
+                resp = requests.get(
+                    f"{self.api_url.rstrip('/')}/models",
+                    headers=self._api_headers(),
+                    timeout=1,
+                )
                 return resp.status_code == 200
         except:
             return False
@@ -81,8 +94,9 @@ GUIDELINES:
             }
             
             response = requests.post(
-                f"{self.api_url}/chat/completions",
+                f"{self.api_url.rstrip('/')}/chat/completions",
                 json=payload,
+                headers=self._api_headers(),
                 timeout=10
             )
             
@@ -137,15 +151,31 @@ GUIDELINES:
             full_prompt = f"{system_msg}\n\n{user_msg}" if system_msg else user_msg
             
             # Generate response
-            response = self.gemini_model.generate_content(
-                full_prompt,
-                generation_config={
-                    'temperature': temperature,
-                    'max_output_tokens': max_tokens,
-                }
+            response = self.gemini_client.models.generate_content(
+                model=self.model_name,
+                contents=full_prompt,
+                config={
+                    "temperature": temperature,
+                    "max_output_tokens": max_tokens,
+                },
             )
-            
-            return response.text.strip()
+
+            text = (getattr(response, "text", None) or "").strip()
+            if text:
+                return text
+
+            # Fallback for SDK variants that do not expose response.text
+            candidates = getattr(response, "candidates", None) or []
+            if candidates:
+                content = getattr(candidates[0], "content", None)
+                if content:
+                    parts = getattr(content, "parts", None) or []
+                    for part in parts:
+                        part_text = (getattr(part, "text", None) or "").strip()
+                        if part_text:
+                            return part_text
+
+            return "LLM Error: Empty Gemini response"
                 
         except Exception as e:
             return f"LLM Error: {str(e)}"
@@ -286,8 +316,8 @@ User Question: {user_query}
 Provide a brief, helpful answer (max 30 words). DO NOT repeat the question:"""}
         ]
         
-        if self.backend == "lm_studio":
-            print(f"[LLM DEBUG] Processing Query via LM Studio: '{user_query}'")
+        if self.backend in ("lm_studio", "vllm", "openai"):
+            print(f"[LLM DEBUG] Processing Query via {self.backend}: '{user_query}'")
             response = self._call_lm_studio(messages, max_tokens=100, temperature=0.7)
         elif self.backend == "ollama":
             print(f"[LLM DEBUG] Processing Query via Ollama: '{user_query}'")
@@ -330,7 +360,7 @@ Are there any safety hazards not already mentioned? If yes, provide a brief warn
 If no additional hazards, respond with "SAFE"."""}
         ]
         
-        if self.backend == "lm_studio":
+        if self.backend in ("lm_studio", "vllm", "openai"):
             response = self._call_lm_studio(messages, max_tokens=50, temperature=0.3)
         elif self.backend == "ollama":
             response = self._call_ollama(messages, max_tokens=50, temperature=0.3)
@@ -361,11 +391,12 @@ If no additional hazards, respond with "SAFE"."""}
 Tip:"""}
         ]
         
-        if self.backend == "lm_studio":
+        if self.backend in ("lm_studio", "vllm", "openai"):
             return self._call_lm_studio(messages, max_tokens=60, temperature=0.8)
         elif self.backend == "ollama":
             return self._call_ollama(messages, max_tokens=60, temperature=0.8)
-        elif self.backend == "local":
-            return self._call_local(messages, max_tokens=60, temperature=0.8)
+        elif self.backend in ("gemini", "local"):
+            call_fn = self._call_gemini if self.backend == "gemini" else self._call_local
+            return call_fn(messages, max_tokens=60, temperature=0.8)
         else:
             return "Clear path ahead"

@@ -51,3 +51,16 @@ export const CAMERA_FEED_URL = `${API_BASE}/api/camera/feed`;
 // Camera source mode: "backend" (server camera/MJPEG) or "browser" (getUserMedia → WS)
 export const CAMERA_MODE =
   import.meta.env.VITE_CAMERA_MODE || "backend";
+
+export function buildWsUrl(path = "/ws", accessToken = "") {
+  const base = WS_URL.replace(/\/ws\/?$/, path);
+  if (!accessToken) return base;
+  const sep = base.includes("?") ? "&" : "?";
+  return `${base}${sep}access_token=${encodeURIComponent(accessToken)}`;
+}
+
+export function buildCameraFeedUrl(accessToken = "") {
+  if (!accessToken) return CAMERA_FEED_URL;
+  const sep = CAMERA_FEED_URL.includes("?") ? "&" : "?";
+  return `${CAMERA_FEED_URL}${sep}access_token=${encodeURIComponent(accessToken)}`;
+}

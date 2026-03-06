@@ -21,8 +21,11 @@ Frontend/.vite/
 # Backend
 # ===============================
 Backend/venv/
+Backend/venv-server/
 Backend/Inference/Models/
 Backend/Inference/Logs/*.log
+Backend/API/auth.db
+Backend/API/*.sqlite3
 
 # ===============================
 # Python

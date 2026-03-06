@@ -1,18 +1,19 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { WS_URL } from '../config';
+import { buildWsUrl } from '../config';
 
 const RECONNECT_DELAY = 2000;
 
-export function useWebSocket() {
+export function useWebSocket(accessToken, onUnauthorized) {
   const [state, setState] = useState(null);
   const [connected, setConnected] = useState(false);
   const wsRef = useRef(null);
   const reconnectTimer = useRef(null);
 
-  const connect = useCallback(() => {
+  const connect = useCallback(function connectSocket() {
+    if (!accessToken) return;
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
-    const ws = new WebSocket(WS_URL);
+    const ws = new WebSocket(buildWsUrl("/ws", accessToken));
 
     ws.onopen = () => {
       setConnected(true);
@@ -28,10 +29,17 @@ export function useWebSocket() {
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       setConnected(false);
+      if (event.code === 4401) {
+        console.warn('[WS] Unauthorized');
+        if (onUnauthorized) {
+          Promise.resolve(onUnauthorized()).catch(() => {});
+        }
+        return;
+      }
       console.log('[WS] Disconnected — reconnecting...');
-      reconnectTimer.current = setTimeout(connect, RECONNECT_DELAY);
+      reconnectTimer.current = setTimeout(connectSocket, RECONNECT_DELAY);
     };
 
     ws.onerror = (err) => {
@@ -40,15 +48,21 @@ export function useWebSocket() {
     };
 
     wsRef.current = ws;
-  }, []);
+  }, [accessToken, onUnauthorized]);
 
   useEffect(() => {
+    setState(null);
+    setConnected(false);
+    clearTimeout(reconnectTimer.current);
+    wsRef.current?.close();
+    if (!accessToken) return undefined;
+
     connect();
     return () => {
       clearTimeout(reconnectTimer.current);
       wsRef.current?.close();
     };
-  }, [connect]);
+  }, [connect, accessToken]);
 
   const sendMessage = useCallback((msg) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {

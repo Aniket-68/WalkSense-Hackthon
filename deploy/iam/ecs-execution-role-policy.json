@@ -1,0 +1,64 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "ECRAuth",
+            "Effect": "Allow",
+            "Action": [
+                "ecr:GetAuthorizationToken"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "ECRImagePull",
+            "Effect": "Allow",
+            "Action": [
+                "ecr:BatchCheckLayerAvailability",
+                "ecr:GetDownloadUrlForLayer",
+                "ecr:BatchGetImage"
+            ],
+            "Resource": [
+                "arn:aws:ecr:us-east-1:ACCOUNT_ID:repository/walksense-backend",
+                "arn:aws:ecr:us-east-1:ACCOUNT_ID:repository/walksense-frontend"
+            ]
+        },
+        {
+            "Sid": "SecretsManagerRead",
+            "Effect": "Allow",
+            "Action": [
+                "secretsmanager:GetSecretValue",
+                "secretsmanager:DescribeSecret"
+            ],
+            "Resource": [
+                "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:walksense/*",
+                "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:GEMINI_API_KEY*",
+                "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:DEEPGRAM_API_KEY*",
+                "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:CARTESIA_API_KEY*",
+                "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:MONGO_DB_API_KEY*",
+                "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:JWT_ACCESS_SECRET*",
+                "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:JWT_REFRESH_SECRET*",
+                "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:CORS_ALLOWED_ORIGINS*"
+            ]
+        },
+        {
+            "Sid": "CloudWatchLogs",
+            "Effect": "Allow",
+            "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents",
+                "logs:DescribeLogStreams"
+            ],
+            "Resource": "arn:aws:logs:us-east-1:ACCOUNT_ID:log-group:/ecs/walksense*:*"
+        },
+        {
+            "Sid": "EFSReadOnly",
+            "Effect": "Allow",
+            "Action": [
+                "elasticfilesystem:ClientMount",
+                "elasticfilesystem:DescribeMountTargets"
+            ],
+            "Resource": "arn:aws:elasticfilesystem:us-east-1:ACCOUNT_ID:file-system/*"
+        }
+    ]
+}

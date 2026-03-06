@@ -26,7 +26,7 @@ class _FakeWebSocket:
         self.closed_code = None
         self.sent_payloads = []
 
-    async def close(self, code: int) -> None:
+    async def close(self, code: int, reason: str | None = None) -> None:
         self.closed_code = code
 
     async def accept(self) -> None:
@@ -83,7 +83,7 @@ class AuthFlowIntegrationTests(unittest.IsolatedAsyncioTestCase):
     async def _login(self) -> dict:
         response = await self.client.post(
             "/api/auth/login",
-            json={"username": "admin", "password": "TestPass_123!"},
+            json={"email": "admin@example.com", "password": "TestPass_123!"},
         )
         self.assertEqual(response.status_code, 200, response.text)
         return response.json()
@@ -136,7 +136,8 @@ class AuthFlowIntegrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_ws_auth_rejection_and_acceptance(self) -> None:
         ws_denied = _FakeWebSocket(access_token="")
         await self.server_mod.websocket_endpoint(ws_denied)
-        self.assertFalse(ws_denied.accepted)
+        # WebSocket auth accepts before close so the client receives a WS close code.
+        self.assertTrue(ws_denied.accepted)
         self.assertEqual(ws_denied.closed_code, 4401)
 
         access = (await self._login())["access_token"]
@@ -150,13 +151,13 @@ class AuthFlowIntegrationTests(unittest.IsolatedAsyncioTestCase):
         for _ in range(3):
             failed = await self.client.post(
                 "/api/auth/login",
-                json={"username": "admin", "password": "wrong-password"},
+                json={"email": "admin@example.com", "password": "wrong-password"},
             )
             self.assertEqual(failed.status_code, 401, failed.text)
 
         blocked = await self.client.post(
             "/api/auth/login",
-            json={"username": "admin", "password": "wrong-password"},
+            json={"email": "admin@example.com", "password": "wrong-password"},
         )
         self.assertEqual(blocked.status_code, 429, blocked.text)
 

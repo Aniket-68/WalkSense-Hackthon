@@ -102,7 +102,7 @@ export function useTTS(state, { enabled = true, audioPermitted = true } = {}) {
     } else {
       newItems.forEach(speakItem);
     }
-  }, [state?.tts_queue, enabled, audioPermitted, voicesReady]);
+  }, [state?.tts_queue, state?.tts_remote_mode, enabled, audioPermitted, voicesReady]);
 
   // Cleanup on unmount
   useEffect(() => {

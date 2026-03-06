@@ -1,0 +1,26 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    app: walksense
+    env: production
+
+scrape_configs:
+  # ── WalkSense Backend ──────────────────────────────
+  - job_name: walksense-backend
+    static_configs:
+      - targets: ["backend:8080"]
+    metrics_path: /metrics
+    scrape_interval: 10s
+    scrape_timeout: 8s
+
+  # ── Node Exporter (host-level: CPU, RAM, disk) ─────
+  - job_name: node-exporter
+    static_configs:
+      - targets: ["host.docker.internal:9100"]
+    scrape_interval: 30s
+
+  # ── Prometheus self-monitoring ─────────────────────
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

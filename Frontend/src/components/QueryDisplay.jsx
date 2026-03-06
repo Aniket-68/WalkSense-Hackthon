@@ -1,14 +1,35 @@
 import { useState, useRef, useEffect } from "react";
 import { API_BASE } from "../config";
 
-export default function QueryDisplay({ state }) {
+export default function QueryDisplay({ state, authFetch, onVoiceStateChange }) {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [micError, setMicError] = useState("");
+  const [micPermission, setMicPermission] = useState("unknown");
   const listRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
 
   const history = state?.dialogue_history || [];
+
+  useEffect(() => {
+    if (!onVoiceStateChange) return;
+    if (isTranscribing) {
+      onVoiceStateChange("transcribing");
+      return;
+    }
+    if (isRecording) {
+      onVoiceStateChange("recording");
+      return;
+    }
+    onVoiceStateChange("idle");
+  }, [isRecording, isTranscribing, onVoiceStateChange]);
+
+  useEffect(() => {
+    return () => {
+      if (onVoiceStateChange) onVoiceStateChange("idle");
+    };
+  }, [onVoiceStateChange]);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -17,9 +38,64 @@ export default function QueryDisplay({ state }) {
     }
   }, [history.length]);
 
+  useEffect(() => {
+    let cancelled = false;
+    let permissionStatus = null;
+
+    async function watchMicPermission() {
+      try {
+        if (!navigator.permissions?.query) return;
+        permissionStatus = await navigator.permissions.query({
+          name: "microphone",
+        });
+        if (cancelled) return;
+
+        setMicPermission(permissionStatus.state || "unknown");
+        permissionStatus.onchange = () => {
+          setMicPermission(permissionStatus.state || "unknown");
+        };
+      } catch {
+        // Browser doesn't support mic permission query.
+      }
+    }
+
+    watchMicPermission();
+
+    return () => {
+      cancelled = true;
+      if (permissionStatus) permissionStatus.onchange = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (micPermission === "granted") {
+      setMicError("");
+    }
+    if (micPermission === "denied") {
+      setMicError(
+        "Microphone is blocked in Chrome. Click the lock icon in the address bar, set Microphone to Allow, then reload this page."
+      );
+    }
+  }, [micPermission]);
+
   const handleStartRecording = async () => {
+    setMicError("");
+
+    if (!window.isSecureContext) {
+      setMicError(
+        "Microphone access requires a secure context (https or localhost)."
+      );
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setMicError("This browser does not support microphone capture.");
+      return;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setMicPermission("granted");
       audioChunksRef.current = [];
 
       const mediaRecorder = new MediaRecorder(stream, {
@@ -53,7 +129,8 @@ export default function QueryDisplay({ state }) {
           const formData = new FormData();
           formData.append("audio", audioBlob, "recording.webm");
 
-          const res = await fetch(`${API_BASE}/api/voice-query`, {
+          const request = authFetch || fetch;
+          const res = await request(`${API_BASE}/api/voice-query`, {
             method: "POST",
             body: formData,
           });
@@ -81,6 +158,19 @@ export default function QueryDisplay({ state }) {
       console.log("Recording started");
     } catch (err) {
       console.error("Microphone access denied:", err);
+      const errName = err?.name || "";
+      if (errName === "NotAllowedError" || errName === "PermissionDeniedError") {
+        setMicError(
+          "Chrome blocked microphone access. Allow microphone for this site, then try again."
+        );
+      } else if (errName === "NotFoundError" || errName === "DevicesNotFoundError") {
+        setMicError("No microphone device was found.");
+      } else if (errName === "NotReadableError" || errName === "TrackStartError") {
+        setMicError("Microphone is busy in another app. Close that app and retry.");
+      } else {
+        setMicError(`Microphone error: ${err?.message || "Unknown error"}`);
+      }
+      setIsRecording(false);
     }
   };
 
@@ -258,6 +348,18 @@ export default function QueryDisplay({ state }) {
           </button>
         )}
       </div>
+      {micError && (
+        <p
+          role="alert"
+          style={{
+            marginTop: 10,
+            fontSize: "0.85rem",
+            color: "var(--accent-red, #ff5252)",
+          }}
+        >
+          {micError}
+        </p>
+      )}
     </div>
   );
 }

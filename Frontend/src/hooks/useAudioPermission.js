@@ -26,22 +26,6 @@ export function useAudioPermission(needsAudio = false) {
   );
   const ctxRef = useRef(null);
 
-  // Also auto-grant if the user already interacted (e.g. Start button)
-  // and the AudioContext is already running (edge case).
-  useEffect(() => {
-    if (granted || !needsAudio) return;
-    // Check if speechSynthesis is already unlocked by trying a silent speak
-    // (Some browsers unlock globally after any user gesture on the page)
-    try {
-      if (ctxRef.current?.state === "running") {
-        setGranted(true);
-        sessionStorage.setItem(STORAGE_KEY, "1");
-      }
-    } catch {
-      /* ignore */
-    }
-  }, [granted, needsAudio]);
-
   const request = useCallback(() => {
     // Unlock Web Speech API with a silent utterance
     try {

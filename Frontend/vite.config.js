@@ -1,6 +1,13 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import basicSsl from '@vitejs/plugin-basic-ssl'
+import process from 'node:process'
+
+const backendOrigin = (
+  process.env.VITE_PROXY_TARGET ||
+  process.env.VITE_API_URL ||
+  'http://localhost:8080'
+).replace(/\/+$/, '')
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -15,7 +22,7 @@ export default defineConfig({
     },
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: backendOrigin,
         changeOrigin: true,
         secure: false,
         configure: (proxy) => {
@@ -29,7 +36,7 @@ export default defineConfig({
       },
       // /ws and /ws/camera → backend WebSockets
       '/ws': {
-        target: 'http://localhost:8080',
+        target: backendOrigin,
         changeOrigin: true,
         secure: false,
         ws: true,
