@@ -1,0 +1,34 @@
+# ===============================================
+# WalkSense Backend — Minimal Server Requirements
+# ===============================================
+# Only what's needed to start the FastAPI server.
+# ML/Inference packages (torch, transformers, etc.)
+# are loaded lazily by SystemManager at runtime.
+#
+# Install: pip install -r requirements-server.txt
+# Full ML stack: pip install -r requirements.txt
+# ===============================================
+
+# ── API Server ────────────────────────────────
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+python-multipart>=0.0.18
+pydantic>=2.6.0
+
+# ── Auth & Security ───────────────────────────
+PyJWT>=2.9.0
+
+# ── Configuration ─────────────────────────────
+python-dotenv>=1.0.0
+
+# ── Logging ───────────────────────────────────
+loguru>=0.7.2
+
+# ── HTTP Client (for Deepgram/Gemini API) ────
+requests>=2.31.0
+google-generativeai>=0.8.0
+
+# ── Image/Video (camera feed + MJPEG) ────────
+opencv-python-headless>=4.8.0
+Pillow>=10.0.0
+numpy>=1.24.0

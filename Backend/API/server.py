@@ -7,42 +7,85 @@ Run with:
 """
 
 import asyncio
-import json
 import time
 import sys
 import os
+from contextlib import asynccontextmanager
 
 # Load environment variables from .env file
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, File, UploadFile
+from fastapi import (
+    FastAPI,
+    WebSocket,
+    WebSocketDisconnect,
+    File,
+    UploadFile,
+    Depends,
+    Request,
+    HTTPException,
+    status,
+)
 from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Dict, Any
 from loguru import logger
 
 # Ensure backend root is on the path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from API.manager import SystemManager
+from API.auth import (
+    AUTH_CLEANUP_INTERVAL_SECONDS,
+    AUTH_HOUSEKEEPING_ENABLED,
+    AuthError,
+    RateLimitExceeded,
+    TokenReuseDetected,
+    REFRESH_COOKIE_NAME,
+    clear_refresh_cookie,
+    enforce_rate_limit,
+    issue_login_tokens,
+    maybe_emit_lockout_alert,
+    provision_managed_user,
+    record_audit_event,
+    register_rate_limit_failure,
+    render_prometheus_metrics,
+    reset_rate_limit,
+    require_user,
+    revoke_family,
+    revoke_family_from_refresh,
+    run_auth_maintenance_cycle,
+    rotate_refresh_token,
+    set_refresh_cookie,
+    validate_access_token,
+)
 
 # ──────────────────────────────────────────────
 # App
 # ──────────────────────────────────────────────
 
-app = FastAPI(title="WalkSense API", version="1.0.0")
+_auth_housekeeping_task: Optional[asyncio.Task] = None
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Vite dev server + any origin
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+def _cors_origins_from_env() -> list[str]:
+    raw = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:5173,https://localhost:5173")
+    origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+    return origins or ["http://localhost:5173", "https://localhost:5173"]
 
 manager = SystemManager()
+VOICE_QUERY_MAX_CONCURRENCY = max(1, int(os.getenv("VOICE_QUERY_MAX_CONCURRENCY", "4")))
+_voice_query_semaphore = asyncio.Semaphore(VOICE_QUERY_MAX_CONCURRENCY)
+
+
+def _client_ip(request: Request) -> str:
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
 
 
 # ──────────────────────────────────────────────
@@ -52,33 +95,294 @@ manager = SystemManager()
 class QueryRequest(BaseModel):
     text: str
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+    confirm_password: Optional[str] = None
+
+
+async def _auth_housekeeping_loop() -> None:
+    """Periodic auth cleanup + alert scan."""
+    interval = max(60, int(AUTH_CLEANUP_INTERVAL_SECONDS))
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            result = run_auth_maintenance_cycle()
+            if result["deleted_audit_events"] or result["deleted_rate_limits"]:
+                logger.info(
+                    "[AUTH_MAINTENANCE] cleanup deleted "
+                    f"audit={result['deleted_audit_events']} rate_limits={result['deleted_rate_limits']}"
+                )
+        except Exception as exc:
+            logger.error(f"[AUTH_MAINTENANCE] cleanup loop error: {exc}")
+
+
+@asynccontextmanager
+async def _lifespan(_: FastAPI):
+    global _auth_housekeeping_task
+    if not AUTH_HOUSEKEEPING_ENABLED:
+        logger.info("[AUTH_MAINTENANCE] housekeeping disabled by config")
+    else:
+        if _auth_housekeeping_task is None or _auth_housekeeping_task.done():
+            _auth_housekeeping_task = asyncio.create_task(_auth_housekeeping_loop())
+            logger.info("[AUTH_MAINTENANCE] housekeeping loop started")
+    try:
+        yield
+    finally:
+        if _auth_housekeeping_task:
+            _auth_housekeeping_task.cancel()
+            try:
+                await _auth_housekeeping_task
+            except asyncio.CancelledError:
+                pass
+            _auth_housekeeping_task = None
+
+
+app = FastAPI(title="WalkSense API", version="1.0.0", lifespan=_lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins_from_env(),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 # ──────────────────────────────────────────────
 # REST Endpoints
 # ──────────────────────────────────────────────
 
+@app.post("/api/auth/login")
+async def auth_login(req: LoginRequest, request: Request):
+    """Authenticate user and issue access + refresh tokens."""
+    client_ip = _client_ip(request)
+    username = (req.username or "").strip().lower()
+    rate_id = f"{client_ip}:{username}"
+
+    try:
+        enforce_rate_limit("login", rate_id)
+    except RateLimitExceeded as e:
+        record_audit_event(
+            "login_rate_limited",
+            False,
+            username=username or None,
+            ip=client_ip,
+            detail=f"retry_after={e.retry_after}",
+        )
+        maybe_emit_lockout_alert(trigger="login_rate_limited", ip=client_ip)
+        return JSONResponse(
+            {"detail": e.message},
+            status_code=e.status_code,
+            headers={"Retry-After": str(e.retry_after)},
+        )
+
+    try:
+        token_bundle = issue_login_tokens(req.username, req.password, client_ip=client_ip)
+        reset_rate_limit("login", rate_id)
+    except AuthError as e:
+        register_rate_limit_failure("login", rate_id, ip=client_ip, reason=e.message)
+        return JSONResponse({"detail": e.message}, status_code=e.status_code)
+
+    response = JSONResponse(
+        {
+            "status": "ok",
+            "token_type": "bearer",
+            "access_token": token_bundle["access_token"],
+            "expires_in": token_bundle["expires_in"],
+            "user": token_bundle["user"],
+        }
+    )
+    set_refresh_cookie(response, token_bundle["refresh_token"])
+    return response
+
+
+@app.post("/api/auth/register")
+async def auth_register(req: RegisterRequest, request: Request):
+    """Self-service user registration."""
+    client_ip = _client_ip(request)
+    username = (req.username or "").strip().lower()
+
+    # Basic validation
+    if not username or len(username) < 3:
+        raise HTTPException(status_code=422, detail="Username must be at least 3 characters")
+    if not req.password or len(req.password) < 8:
+        raise HTTPException(status_code=422, detail="Password must be at least 8 characters")
+    if req.confirm_password is not None and req.password != req.confirm_password:
+        raise HTTPException(status_code=422, detail="Passwords do not match")
+
+    # Apply same rate limiting as login
+    rate_id = f"{client_ip}:register"
+    try:
+        enforce_rate_limit("login", rate_id)
+    except RateLimitExceeded as e:
+        raise HTTPException(
+            status_code=e.status_code,
+            detail=e.message,
+            headers={"Retry-After": str(e.retry_after)},
+        ) from e
+
+    # Create the user
+    try:
+        provision_managed_user(username, req.password)
+    except ValueError as e:
+        msg = str(e)
+        if "already exists" in msg:
+            raise HTTPException(status_code=409, detail="Username already taken")
+        raise HTTPException(status_code=422, detail=msg)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Registration failed")
+
+    # Auto-login — issue tokens immediately
+    try:
+        token_bundle = issue_login_tokens(username, req.password, client_ip=client_ip)
+    except AuthError as e:
+        # Account created but token issue failed — shouldn't happen
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e
+
+    record_audit_event("register_success", True, username=username, ip=client_ip)
+    reset_rate_limit("login", rate_id)
+
+    response = JSONResponse(
+        {
+            "status": "created",
+            "token_type": "bearer",
+            "access_token": token_bundle["access_token"],
+            "expires_in": token_bundle["expires_in"],
+            "user": token_bundle["user"],
+        },
+        status_code=201,
+    )
+    set_refresh_cookie(response, token_bundle["refresh_token"])
+    return response
+
+
+@app.post("/api/auth/refresh")
+async def auth_refresh(request: Request):
+    """Rotate refresh token and issue a new access token."""
+    client_ip = _client_ip(request)
+    rate_id = f"{client_ip}:refresh"
+    try:
+        enforce_rate_limit("refresh", rate_id)
+    except RateLimitExceeded as e:
+        record_audit_event(
+            "refresh_rate_limited",
+            False,
+            ip=client_ip,
+            detail=f"retry_after={e.retry_after}",
+        )
+        maybe_emit_lockout_alert(trigger="refresh_rate_limited", ip=client_ip)
+        return JSONResponse(
+            {"detail": e.message},
+            status_code=e.status_code,
+            headers={"Retry-After": str(e.retry_after)},
+        )
+
+    refresh_token = request.cookies.get(REFRESH_COOKIE_NAME)
+    if not refresh_token:
+        register_rate_limit_failure("refresh", rate_id, ip=client_ip, reason="missing_refresh_cookie")
+        record_audit_event("refresh_failed", False, ip=client_ip, detail="missing_refresh_cookie")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing refresh token")
+
+    try:
+        token_bundle = rotate_refresh_token(refresh_token, client_ip=client_ip)
+        reset_rate_limit("refresh", rate_id)
+    except TokenReuseDetected as e:
+        register_rate_limit_failure("refresh", rate_id, ip=client_ip, reason="refresh_reuse_detected")
+        maybe_emit_lockout_alert(trigger="refresh_reuse_detected", ip=client_ip)
+        response = JSONResponse(
+            {"status": "compromised", "detail": e.message},
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+        clear_refresh_cookie(response)
+        return response
+    except AuthError as e:
+        register_rate_limit_failure("refresh", rate_id, ip=client_ip, reason=e.message)
+        response = JSONResponse({"detail": e.message}, status_code=e.status_code)
+        clear_refresh_cookie(response)
+        return response
+
+    response = JSONResponse(
+        {
+            "status": "ok",
+            "token_type": "bearer",
+            "access_token": token_bundle["access_token"],
+            "expires_in": token_bundle["expires_in"],
+            "user": token_bundle["user"],
+        }
+    )
+    set_refresh_cookie(response, token_bundle["refresh_token"])
+    return response
+
+
+@app.post("/api/auth/logout")
+async def auth_logout(request: Request):
+    """Revoke the token family represented by the current refresh token."""
+    client_ip = _client_ip(request)
+    refresh_token = request.cookies.get(REFRESH_COOKIE_NAME)
+    if refresh_token:
+        try:
+            revoke_family_from_refresh(refresh_token, reason="logout", client_ip=client_ip)
+            record_audit_event("logout_success", True, ip=client_ip)
+        except AuthError:
+            # Invalid/expired refresh token: still clear cookie and return success.
+            record_audit_event("logout_with_invalid_refresh", False, ip=client_ip)
+            pass
+    else:
+        record_audit_event("logout_without_refresh", True, ip=client_ip)
+
+    response = JSONResponse({"status": "logged_out"})
+    clear_refresh_cookie(response)
+    return response
+
+
+@app.post("/api/auth/revoke-family")
+async def auth_revoke_family(request: Request, current_user: Dict[str, Any] = Depends(require_user)):
+    """Immediately revoke current JWT family (compromised session response)."""
+    client_ip = _client_ip(request)
+    revoke_family(
+        current_user["family_id"],
+        reason="manual_compromise_report",
+        actor_user_id=current_user["id"],
+        client_ip=client_ip,
+    )
+    maybe_emit_lockout_alert(trigger="manual_family_revoke", ip=client_ip)
+    response = JSONResponse({"status": "revoked"})
+    clear_refresh_cookie(response)
+    return response
+
+
+@app.get("/api/auth/me")
+async def auth_me(current_user: Dict[str, Any] = Depends(require_user)):
+    """Return authenticated user profile from access token."""
+    return {"user": {"id": current_user["id"], "username": current_user["username"]}}
+
+
 @app.post("/api/system/start")
-async def system_start():
+async def system_start(current_user: Dict[str, Any] = Depends(require_user)):
     """Start the processing pipeline."""
     manager.start()
     return {"status": "started"}
 
 
 @app.post("/api/system/stop")
-async def system_stop():
+async def system_stop(current_user: Dict[str, Any] = Depends(require_user)):
     """Stop the processing pipeline."""
     manager.stop()
     return {"status": "stopped"}
 
 
 @app.get("/api/system/status")
-async def system_status():
+async def system_status(current_user: Dict[str, Any] = Depends(require_user)):
     """Get current system state."""
     return manager.get_state()
 
 
 @app.get("/api/config")
-async def get_config():
+async def get_config(current_user: Dict[str, Any] = Depends(require_user)):
     """Return runtime configuration the frontend needs (camera mode, TTS mode, etc.)."""
     from Infrastructure.config import Config
     return {
@@ -88,22 +392,24 @@ async def get_config():
 
 
 @app.post("/api/query")
-async def submit_query(req: QueryRequest):
+async def submit_query(req: QueryRequest, current_user: Dict[str, Any] = Depends(require_user)):
     """Submit a text query to the system."""
     manager.submit_query(req.text)
     return {"status": "submitted", "query": req.text}
 
 
 @app.post("/api/voice-query")
-async def voice_query(audio: UploadFile = File(...)):
+async def voice_query(audio: UploadFile = File(...), current_user: Dict[str, Any] = Depends(require_user)):
     """Accept audio from browser mic, transcribe, and submit as query."""
 
     try:
         audio_bytes = await audio.read()
         logger.info(f"[VoiceQuery] Received audio: {len(audio_bytes)} bytes, type={audio.content_type}")
 
-        # Run blocking work (ffmpeg + whisper) in thread pool
-        text = await asyncio.to_thread(_process_voice_audio, audio_bytes, audio.content_type)
+        # Limit concurrent transcode/transcribe jobs to avoid threadpool starvation.
+        async with _voice_query_semaphore:
+            # Run blocking work (ffmpeg + whisper/deepgram) in thread pool
+            text = await asyncio.to_thread(_process_voice_audio, audio_bytes, audio.content_type)
 
         if not text:
             return JSONResponse(
@@ -207,10 +513,16 @@ def _process_voice_audio(audio_bytes: bytes, content_type: str) -> Optional[str]
 
 
 @app.post("/api/system/mute")
-async def toggle_mute():
+async def toggle_mute(current_user: Dict[str, Any] = Depends(require_user)):
     """Toggle audio mute."""
     muted = manager.toggle_mute()
     return {"muted": muted}
+
+
+@app.get("/metrics/auth")
+async def auth_metrics() -> PlainTextResponse:
+    """Prometheus-formatted security metrics for auth lockouts/compromise events."""
+    return PlainTextResponse(render_prometheus_metrics(), media_type="text/plain; version=0.0.4")
 
 
 # ──────────────────────────────────────────────
@@ -232,8 +544,15 @@ def _mjpeg_generator():
 
 
 @app.get("/api/camera/feed")
-async def camera_feed():
+async def camera_feed(access_token: Optional[str] = None):
     """MJPEG stream of the annotated camera feed."""
+    if not access_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing access token")
+    try:
+        validate_access_token(access_token)
+    except AuthError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e
+
     return StreamingResponse(
         _mjpeg_generator(),
         media_type="multipart/x-mixed-replace; boundary=frame"
@@ -251,6 +570,16 @@ async def camera_ws(ws: WebSocket):
     Used when camera.mode = 'browser' (backend on EC2, no physical camera).
     The frontend sends binary JPEG blobs at ~5 FPS.
     """
+    token = ws.query_params.get("access_token")
+    if not token:
+        await ws.close(code=4401)
+        return
+    try:
+        validate_access_token(token)
+    except AuthError:
+        await ws.close(code=4401)
+        return
+
     await ws.accept()
     logger.info("[WS/Camera] Browser camera client connected")
 
@@ -280,6 +609,16 @@ async def audio_ws(ws: WebSocket):
     and pushes binary chunks here.  The frontend decodes and plays them
     via the Web Audio API.
     """
+    token = ws.query_params.get("access_token")
+    if not token:
+        await ws.close(code=4401)
+        return
+    try:
+        validate_access_token(token)
+    except AuthError:
+        await ws.close(code=4401)
+        return
+
     await ws.accept()
     logger.info("[WS/Audio] Client connected for TTS audio stream")
 
@@ -308,6 +647,16 @@ connected_clients: set[WebSocket] = set()
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     """Push system state to the frontend every ~200ms."""
+    token = ws.query_params.get("access_token")
+    if not token:
+        await ws.close(code=4401)
+        return
+    try:
+        validate_access_token(token)
+    except AuthError:
+        await ws.close(code=4401)
+        return
+
     await ws.accept()
     connected_clients.add(ws)
     logger.info(f"[WS] Client connected ({len(connected_clients)} total)")
