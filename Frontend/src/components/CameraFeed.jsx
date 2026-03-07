@@ -1,8 +1,7 @@
-import { useState } from "react";
-import { API_BASE, CAMERA_FEED_URL, CAMERA_MODE } from "../config";
+import { CAMERA_MODE, buildCameraFeedUrl } from "../config";
 import BrowserCamera from "./BrowserCamera";
 
-export default function CameraFeed({ state }) {
+export default function CameraFeed({ state, accessToken }) {
   const isRunning = state?.system_status === "RUNNING";
   const detectionCount = state?.pipeline?.yolo?.detections_count ?? 0;
   const spatialSummary = state?.spatial_summary || "";
@@ -16,11 +15,11 @@ export default function CameraFeed({ state }) {
       {isRunning ? (
         <>
           {useBrowserCam ? (
-            <BrowserCamera isRunning={isRunning} />
+            <BrowserCamera isRunning={isRunning} accessToken={accessToken} />
           ) : (
             <img
               className="camera-feed"
-              src={CAMERA_FEED_URL}
+              src={buildCameraFeedUrl(accessToken)}
               alt="WalkSense Camera Feed"
             />
           )}

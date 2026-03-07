@@ -34,13 +34,13 @@ function getExtra(pipelineData, key) {
   return null;
 }
 
-export default function PipelineMonitor({ state }) {
+export default function PipelineMonitor({ state, variant = "full" }) {
   const pipeline = state?.pipeline || {};
   const isRunning = state?.system_status === "RUNNING";
   const isStarting = state?.system_status === "STARTING";
 
   return (
-    <div className="pipeline-container">
+    <div className={`pipeline-container pipeline-${variant}`}>
       {/* Initializing banner */}
       {isStarting && (
         <div className="pipeline-init-banner">
@@ -61,7 +61,7 @@ export default function PipelineMonitor({ state }) {
           </span>
         </div>
       )}
-      <div className="pipeline-row">
+      <div className={`pipeline-row ${variant === "compact" ? "pipeline-row-compact" : ""}`}>
         {PIPELINE_NODES.map((node, i) => {
           const status = isRunning
             ? getNodeStatus(pipeline, node.key)

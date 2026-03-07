@@ -48,6 +48,11 @@ export const WS_URL = deriveWsUrl();
 // Camera feed URL (MJPEG stream from backend's own camera)
 export const CAMERA_FEED_URL = `${API_BASE}/api/camera/feed`;
 
+// Optional helper used by mobile UI variants. Access token is ignored when not used.
+export function buildCameraFeedUrl(_accessToken) {
+  return CAMERA_FEED_URL;
+}
+
 // Camera source mode: "backend" (server camera/MJPEG) or "browser" (getUserMedia → WS)
 export const CAMERA_MODE =
   import.meta.env.VITE_CAMERA_MODE || "backend";

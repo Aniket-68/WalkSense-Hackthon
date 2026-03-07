@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { useTTS } from "./hooks/useTTS";
 import { useAudioStream } from "./hooks/useAudioStream";
@@ -7,10 +8,12 @@ import QueryDisplay from "./components/QueryDisplay";
 import SystemControls from "./components/SystemControls";
 import PipelineMonitor from "./components/PipelineMonitor";
 import KeyboardShortcuts from "./components/KeyboardShortcuts";
+import MobileControlDock from "./components/MobileControlDock";
 import { API_BASE } from "./config";
 
 function App() {
   const { state, connected } = useWebSocket();
+  const [voiceState, setVoiceState] = useState("idle");
 
   // Audio permission — required before any browser audio can play
   const needsAudio =
@@ -48,6 +51,14 @@ function App() {
     const voiceBtn = document.querySelector(".voice-btn");
     if (voiceBtn) {
       voiceBtn.click();
+    }
+  };
+
+  const handleToggleMute = async () => {
+    try {
+      await fetch(`${API_BASE}/api/system/mute`, { method: "POST" });
+    } catch (err) {
+      console.error("Mute failed:", err);
     }
   };
 
@@ -154,18 +165,33 @@ function App() {
       <main className="main-content">
         {/* Left: Camera */}
         <div className="left-panel">
-          <CameraFeed state={state} />
+          <div className="camera-stack">
+            <CameraFeed state={state} />
+            <div className="mobile-pipeline-overlay">
+              <PipelineMonitor state={state} variant="compact" />
+            </div>
+          </div>
         </div>
 
         {/* Right: Dialogue + Controls */}
         <div className="right-panel">
-          <QueryDisplay state={state} />
+          <QueryDisplay state={state} onVoiceStateChange={setVoiceState} />
           <SystemControls state={state} onStartStop={handleStartStop} />
+          <div className="desktop-pipeline-wrap">
+            <PipelineMonitor state={state} />
+          </div>
         </div>
       </main>
 
-      {/* ─── Pipeline Monitor ─── */}
-      <PipelineMonitor state={state} />
+      {/* ─── Mobile Control Dock ─── */}
+      <MobileControlDock
+        systemStatus={systemStatus}
+        isMuted={state?.muted || false}
+        voiceState={voiceState}
+        onStartStop={handleStartStop}
+        onListen={handleListen}
+        onToggleMute={handleToggleMute}
+      />
     </div>
   );
 }
