@@ -176,6 +176,9 @@ function App() {
         {/* Right: Dialogue + Controls */}
         <div className="right-panel">
           <QueryDisplay state={state} onVoiceStateChange={setVoiceState} />
+          <div className="mobile-inline-pipeline">
+            <PipelineMonitor state={state} variant="compact" />
+          </div>
           <SystemControls state={state} onStartStop={handleStartStop} />
         </div>
       </main>

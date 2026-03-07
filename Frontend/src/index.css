@@ -324,6 +324,10 @@ body {
   display: none;
 }
 
+.mobile-inline-pipeline {
+  display: none;
+}
+
 .right-panel {
   display: flex;
   flex-direction: column;
@@ -1560,26 +1564,26 @@ body {
   }
 
   .mobile-pipeline-overlay {
-    display: block;
-    position: absolute;
-    left: 8px;
-    right: 8px;
-    bottom: 12px;
-    z-index: 5;
-    pointer-events: none;
-  }
-
-  .mobile-pipeline-overlay .pipeline-container {
-    pointer-events: auto;
+    display: none;
   }
 
   .right-panel {
-    flex: 1;
+    flex: 0 0 auto;
     min-height: 0;
-    gap: 10px;
+    gap: 8px;
+  }
+
+  .mobile-inline-pipeline {
+    display: block;
+  }
+
+  .mobile-inline-pipeline .pipeline-container {
+    border-radius: 16px;
   }
 
   .query-container {
+    flex: 0 0 auto;
+    height: min(42dvh, 360px);
     border-radius: 18px;
     overflow: hidden;
     background: linear-gradient(
@@ -1601,7 +1605,7 @@ body {
   .dialogue-display {
     padding: 12px;
     gap: 12px;
-    padding-bottom: 130px;
+    padding-bottom: 72px;
   }
 
   .message-bubble {
