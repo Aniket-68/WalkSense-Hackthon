@@ -335,6 +335,10 @@ body {
   display: block;
 }
 
+.desktop-bottom-pipeline {
+  display: block;
+}
+
 .auth-user {
   font-size: 0.75rem;
   color: var(--text-secondary);
@@ -1616,6 +1620,10 @@ body {
   }
 
   .desktop-pipeline-wrap {
+    display: none;
+  }
+
+  .desktop-bottom-pipeline {
     display: none;
   }
 

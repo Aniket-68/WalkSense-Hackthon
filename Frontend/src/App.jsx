@@ -177,11 +177,13 @@ function App() {
         <div className="right-panel">
           <QueryDisplay state={state} onVoiceStateChange={setVoiceState} />
           <SystemControls state={state} onStartStop={handleStartStop} />
-          <div className="desktop-pipeline-wrap">
-            <PipelineMonitor state={state} />
-          </div>
         </div>
       </main>
+
+      {/* ─── Desktop Bottom Pipeline ─── */}
+      <div className="desktop-bottom-pipeline">
+        <PipelineMonitor state={state} />
+      </div>
 
       {/* ─── Mobile Control Dock ─── */}
       <MobileControlDock
