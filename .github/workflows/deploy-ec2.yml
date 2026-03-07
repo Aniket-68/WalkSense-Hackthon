@@ -5,7 +5,6 @@ on:
     branches: [prototype-test]
     paths:
       - "Backend/**"
-      - "Frontend/**"
       - "docker-compose.yml"
       - "deploy/**"
       - ".github/workflows/deploy-ec2.yml"
@@ -38,7 +37,6 @@ jobs:
     outputs:
       image_tag: ${{ steps.meta.outputs.image_tag }}
       backend_image: ${{ steps.meta.outputs.backend_image }}
-      frontend_image: ${{ steps.meta.outputs.frontend_image }}
 
     steps:
       - uses: actions/checkout@v4
@@ -60,7 +58,6 @@ jobs:
           IMAGE_TAG="$(echo "$GITHUB_SHA" | cut -c1-8)"
           echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
           echo "backend_image=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:backend-${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
-          echo "frontend_image=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:frontend-${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -74,20 +71,6 @@ jobs:
           tags: |
             ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:backend-${{ steps.meta.outputs.image_tag }}
             ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:backend-latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build & push frontend
-        uses: docker/build-push-action@v5
-        with:
-          context: ./Frontend
-          file: ./Frontend/Dockerfile
-          push: true
-          build-args: |
-            VITE_API_URL=https://${{ secrets.DOMAIN }}
-          tags: |
-            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:frontend-${{ steps.meta.outputs.image_tag }}
-            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:frontend-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -113,12 +96,10 @@ jobs:
             ECR_REGISTRY='${{ env.ECR_REGISTRY }}'
             APP_ENV='${{ env.APP_ENV }}'
             BACKEND_IMAGE='${{ needs.build-and-push.outputs.backend_image }}'
-            FRONTEND_IMAGE='${{ needs.build-and-push.outputs.frontend_image }}'
             BACKEND_IMAGE="${BACKEND_IMAGE:-${ECR_REGISTRY}/${{ env.ECR_REPO }}:backend-latest}"
-            FRONTEND_IMAGE="${FRONTEND_IMAGE:-${ECR_REGISTRY}/${{ env.ECR_REPO }}:frontend-latest}"
 
-            if [ -z "$BACKEND_IMAGE" ] || [ -z "$FRONTEND_IMAGE" ]; then
-              echo "Image references must not be empty"
+            if [ -z "$BACKEND_IMAGE" ]; then
+              echo "Backend image reference must not be empty"
               exit 1
             fi
 
@@ -132,12 +113,6 @@ jobs:
             git checkout "$BRANCH"
             git reset --hard "origin/$BRANCH"
 
-            # Compose requires deploy/ec2/.env via env_file; create a placeholder when absent.
-            mkdir -p deploy/ec2
-            if [ ! -f deploy/ec2/.env ]; then
-              touch deploy/ec2/.env
-            fi
-
             aws ecr get-login-password --region "$AWS_REGION" \
               | docker login --username AWS --password-stdin "$ECR_REGISTRY"
 
@@ -146,9 +121,25 @@ jobs:
             docker system prune -af --volumes || true
 
             docker pull "$BACKEND_IMAGE"
-            docker pull "$FRONTEND_IMAGE"
 
-            export APP_ENV BACKEND_IMAGE FRONTEND_IMAGE
+            export APP_ENV BACKEND_IMAGE
             docker compose -f deploy/ec2/docker-compose.ec2.yml up -d --remove-orphans
+
+            # Validate monitoring services came up correctly.
+            for _ in 1 2 3 4 5; do
+              if curl -fsS http://localhost:9090/-/ready >/dev/null 2>&1; then
+                break
+              fi
+              sleep 5
+            done
+            curl -fsS http://localhost:9090/-/ready >/dev/null
+
+            for _ in 1 2 3 4 5 6; do
+              if curl -fsS http://localhost:3000/api/health >/dev/null 2>&1; then
+                break
+              fi
+              sleep 5
+            done
+            curl -fsS http://localhost:3000/api/health >/dev/null
 
             docker image prune -f

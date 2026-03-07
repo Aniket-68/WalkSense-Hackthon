@@ -50,13 +50,12 @@ aws ec2 associate-iam-instance-profile --instance-id i-XXXXXXXXXXXX --iam-instan
 
 ## What Happens on `git push prototype-test`
 
-1. GitHub Actions builds Docker images
+1. GitHub Actions builds Docker image
 2. Pushes to ECR:
    - `${ECR_REPO}:backend-<sha>` and `${ECR_REPO}:backend-latest`
-   - `${ECR_REPO}:frontend-<sha>` and `${ECR_REPO}:frontend-latest`
 3. SSHs into EC2
 4. EC2 authenticates to ECR via instance role
-5. Pulls both images
+5. Pulls backend image + starts fallback/monitoring stack (vLLM, Prometheus, Grafana)
 6. Runs `docker compose -f deploy/ec2/docker-compose.ec2.yml up -d --remove-orphans`
 
 ## Manual Commands on EC2
@@ -70,10 +69,9 @@ aws ecr get-login-password --region ap-southeast-1 \
   | docker login --username AWS --password-stdin $REGISTRY
 
 export BACKEND_IMAGE="$REGISTRY/walksense-hackathon-prototype:backend-latest"
-export FRONTEND_IMAGE="$REGISTRY/walksense-hackathon-prototype:frontend-latest"
 export APP_ENV=production
 
-docker compose -f deploy/ec2/docker-compose.ec2.yml pull backend frontend
+docker compose -f deploy/ec2/docker-compose.ec2.yml pull backend
 docker compose -f deploy/ec2/docker-compose.ec2.yml up -d --remove-orphans
 
 # Check status
