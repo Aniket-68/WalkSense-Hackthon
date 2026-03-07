@@ -1,6 +1,6 @@
 services:
   backend:
-    image: ${ECR_REGISTRY}/walksense-backend:${IMAGE_TAG:-latest}
+    image: ${BACKEND_IMAGE:-walksense-backend:latest}
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -36,7 +36,7 @@ services:
       - walksense-net
 
   frontend:
-    image: ${ECR_REGISTRY}/walksense-frontend:${IMAGE_TAG:-latest}
+    image: ${FRONTEND_IMAGE:-walksense-frontend:latest}
     restart: unless-stopped
     ports:
       - "80:80"

@@ -25,10 +25,9 @@ permissions:
   contents: read
 
 env:
-  AWS_REGION: us-east-1
-  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
-  BACKEND_IMAGE: walksense-backend
-  FRONTEND_IMAGE: walksense-frontend
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+  ECR_REPO: ${{ secrets.ECR_REPO }}
   APP_ENV: ${{ vars.APP_ENV || 'production' }}
 
 jobs:
@@ -38,6 +37,8 @@ jobs:
 
     outputs:
       image-tag: ${{ steps.meta.outputs.image-tag }}
+      backend-image: ${{ steps.meta.outputs.backend-image }}
+      frontend-image: ${{ steps.meta.outputs.frontend-image }}
 
     steps:
       - uses: actions/checkout@v4
@@ -55,7 +56,11 @@ jobs:
 
       - name: Generate image tag
         id: meta
-        run: echo "image-tag=$(echo $GITHUB_SHA | cut -c1-8)" >> "$GITHUB_OUTPUT"
+        run: |
+          IMAGE_TAG="$(echo "$GITHUB_SHA" | cut -c1-8)"
+          echo "image-tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "backend-image=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:backend-${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "frontend-image=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:frontend-${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -67,8 +72,8 @@ jobs:
           file: ./Backend/Dockerfile
           push: true
           tags: |
-            ${{ env.ECR_REGISTRY }}/${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.image-tag }}
-            ${{ env.ECR_REGISTRY }}/${{ env.BACKEND_IMAGE }}:latest
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:backend-${{ steps.meta.outputs.image-tag }}
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:backend-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -81,8 +86,8 @@ jobs:
           build-args: |
             VITE_API_URL=https://${{ secrets.DOMAIN }}
           tags: |
-            ${{ env.ECR_REGISTRY }}/${{ env.FRONTEND_IMAGE }}:${{ steps.meta.outputs.image-tag }}
-            ${{ env.ECR_REGISTRY }}/${{ env.FRONTEND_IMAGE }}:latest
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:frontend-${{ steps.meta.outputs.image-tag }}
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:frontend-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -106,8 +111,9 @@ jobs:
             BRANCH='${{ github.event.inputs.branch || 'prototype-test' }}'
             AWS_REGION='${{ env.AWS_REGION }}'
             ECR_REGISTRY='${{ env.ECR_REGISTRY }}'
-            IMAGE_TAG='${{ needs.build-and-push.outputs.image-tag }}'
             APP_ENV='${{ env.APP_ENV }}'
+            BACKEND_IMAGE='${{ needs.build-and-push.outputs.backend-image }}'
+            FRONTEND_IMAGE='${{ needs.build-and-push.outputs.frontend-image }}'
 
             if [ ! -d "$APP_DIR/.git" ]; then
               rm -rf "$APP_DIR"
@@ -122,8 +128,10 @@ jobs:
             aws ecr get-login-password --region "$AWS_REGION" \
               | docker login --username AWS --password-stdin "$ECR_REGISTRY"
 
-            export ECR_REGISTRY IMAGE_TAG APP_ENV
-            docker compose -f deploy/ec2/docker-compose.ec2.yml pull backend frontend
+            docker pull "$BACKEND_IMAGE"
+            docker pull "$FRONTEND_IMAGE"
+
+            export APP_ENV BACKEND_IMAGE FRONTEND_IMAGE
             docker compose -f deploy/ec2/docker-compose.ec2.yml up -d --remove-orphans
 
             docker image prune -f

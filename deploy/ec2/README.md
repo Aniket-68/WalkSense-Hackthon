@@ -1,70 +1,82 @@
-# EC2 Deployment (GitHub Actions + ECR + Docker Compose)
+# WalkSense — EC2 Deployment Setup
 
-This path deploys WalkSense to a plain EC2 host without ECS.
+## One-Time EC2 Setup
 
-## 1) GitHub Secrets
+SSH into your EC2 instance and run:
 
-Set these repository secrets:
+```bash
+# 1. Install Docker + Compose + AWS CLI
+sudo apt-get update && sudo apt-get install -y docker.io docker-compose-plugin awscli
+sudo usermod -aG docker ubuntu
+newgrp docker
 
-- `AWS_ACCOUNT_ID` (example: `194861362156`)
-- `DOMAIN` (used for frontend build arg `VITE_API_URL`)
-- `EC2_HOST` (public IP/DNS of the instance)
-- `EC2_SSH_USER` (for example `ubuntu`)
-- `EC2_SSH_PRIVATE_KEY` (private key content for SSH)
-- `EC2_SSH_PORT` (optional, defaults to `22`)
+# 2. Clone the repo
+git clone https://github.com/YOUR_ORG/WalkSense-Hackthon.git ~/WalkSense-Hackthon
 
-Optional GitHub variable:
+# 3. Create .env from template
+cd ~/WalkSense-Hackthon/Backend
+cp .env.example .env
+nano .env   # fill in GEMINI_API_KEY, MONGO_DB_API_KEY, JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, CORS_ALLOWED_ORIGINS
+```
 
-- `APP_ENV` (`production` by default)
+## IAM Instance Role (EC2 → ECR pull, no access keys)
 
-## 2) EC2 Prerequisites
+```bash
+# Run from your local machine (one-time)
+aws iam create-role --role-name walksense-ec2 \
+  --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"ec2.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
 
-On the EC2 instance, install:
+aws iam attach-role-policy --role-name walksense-ec2 \
+  --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
 
-- Docker Engine
-- Docker Compose plugin (`docker compose`)
-- AWS CLI v2
-- Git
+aws iam create-instance-profile --instance-profile-name walksense-ec2
+aws iam add-role-to-instance-profile --instance-profile-name walksense-ec2 --role-name walksense-ec2
+aws ec2 associate-iam-instance-profile --instance-id i-XXXXXXXXXXXX --iam-instance-profile Name=walksense-ec2
+```
 
-Ensure user can run docker (for example by adding user to `docker` group).
+## GitHub Actions Secrets Required
 
-## 3) EC2 IAM Permissions
+| Secret | Value |
+|---|---|
+| `AWS_ACCOUNT_ID` | `194861362156` |
+| `AWS_REGION` | ECR/AWS region (example: `ap-southeast-1`) |
+| `ECR_REGISTRY` | Example: `194861362156.dkr.ecr.ap-southeast-1.amazonaws.com` |
+| `ECR_REPO` | Example: `walksense-hackathon-prototype` |
+| `EC2_HOST` | EC2 Elastic IP address |
+| `EC2_SSH_USER` | SSH username (example: `ubuntu`) |
+| `EC2_SSH_PRIVATE_KEY` | Private key contents (PEM) |
+| `EC2_SSH_PORT` | Optional, default `22` |
+| `DOMAIN` | Your domain (e.g. `walksense.example.com`) |
 
-Attach an instance role that can pull from ECR:
+## What Happens on `git push prototype-test`
 
-- `ecr:GetAuthorizationToken`
-- `ecr:BatchCheckLayerAvailability`
-- `ecr:GetDownloadUrlForLayer`
-- `ecr:BatchGetImage`
+1. GitHub Actions builds Docker images
+2. Pushes to ECR:
+   - `${ECR_REPO}:backend-<sha>` and `${ECR_REPO}:backend-latest`
+   - `${ECR_REPO}:frontend-<sha>` and `${ECR_REPO}:frontend-latest`
+3. SSHs into EC2
+4. EC2 authenticates to ECR via instance role
+5. Pulls both images
+6. Runs `docker compose -f deploy/ec2/docker-compose.ec2.yml up -d --remove-orphans`
 
-## 4) App Config on EC2
+## Manual Commands on EC2
 
-Create a runtime env file at:
+```bash
+cd ~/WalkSense-Hackthon
 
-- `<deploy_path>/.env` (default deploy path is `/opt/WalkSense-Hackthon`)
+# First pull + start
+REGISTRY="194861362156.dkr.ecr.ap-southeast-1.amazonaws.com"
+aws ecr get-login-password --region ap-southeast-1 \
+  | docker login --username AWS --password-stdin $REGISTRY
 
-Populate required keys like:
+export BACKEND_IMAGE="$REGISTRY/walksense-hackathon-prototype:backend-latest"
+export FRONTEND_IMAGE="$REGISTRY/walksense-hackathon-prototype:frontend-latest"
+export APP_ENV=production
 
-- `GEMINI_API_KEY`
-- `DEEPGRAM_API_KEY`
-- `CARTESIA_API_KEY`
-- `MONGO_DB_API_KEY`
-- `JWT_ACCESS_SECRET`
-- `JWT_REFRESH_SECRET`
-- `CORS_ALLOWED_ORIGINS`
+docker compose -f deploy/ec2/docker-compose.ec2.yml pull backend frontend
+docker compose -f deploy/ec2/docker-compose.ec2.yml up -d --remove-orphans
 
-## 5) Run Deployment
-
-Use GitHub Actions workflow:
-
-- **Workflow**: `WalkSense Deploy to EC2`
-- **Inputs**:
-  - `branch` (default `prototype-test`)
-  - `deploy_path` (default `/opt/WalkSense-Hackthon`)
-
-The workflow:
-
-1. Builds backend/frontend images.
-2. Pushes them to ECR with SHA tag + `latest`.
-3. SSHes into EC2, updates repo to selected branch.
-4. Pulls new images and restarts services using `deploy/ec2/docker-compose.ec2.yml`.
+# Check status
+docker compose -f deploy/ec2/docker-compose.ec2.yml ps
+docker compose -f deploy/ec2/docker-compose.ec2.yml logs -f backend
+```
