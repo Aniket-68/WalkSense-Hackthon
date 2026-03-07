@@ -36,9 +36,9 @@ jobs:
     runs-on: ubuntu-latest
 
     outputs:
-      image-tag: ${{ steps.meta.outputs.image-tag }}
-      backend-image: ${{ steps.meta.outputs.backend-image }}
-      frontend-image: ${{ steps.meta.outputs.frontend-image }}
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+      backend_image: ${{ steps.meta.outputs.backend_image }}
+      frontend_image: ${{ steps.meta.outputs.frontend_image }}
 
     steps:
       - uses: actions/checkout@v4
@@ -58,9 +58,9 @@ jobs:
         id: meta
         run: |
           IMAGE_TAG="$(echo "$GITHUB_SHA" | cut -c1-8)"
-          echo "image-tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
-          echo "backend-image=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:backend-${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
-          echo "frontend-image=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:frontend-${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "backend_image=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:backend-${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "frontend_image=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:frontend-${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -72,7 +72,7 @@ jobs:
           file: ./Backend/Dockerfile
           push: true
           tags: |
-            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:backend-${{ steps.meta.outputs.image-tag }}
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:backend-${{ steps.meta.outputs.image_tag }}
             ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:backend-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -86,7 +86,7 @@ jobs:
           build-args: |
             VITE_API_URL=https://${{ secrets.DOMAIN }}
           tags: |
-            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:frontend-${{ steps.meta.outputs.image-tag }}
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:frontend-${{ steps.meta.outputs.image_tag }}
             ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:frontend-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -112,8 +112,15 @@ jobs:
             AWS_REGION='${{ env.AWS_REGION }}'
             ECR_REGISTRY='${{ env.ECR_REGISTRY }}'
             APP_ENV='${{ env.APP_ENV }}'
-            BACKEND_IMAGE='${{ needs.build-and-push.outputs.backend-image }}'
-            FRONTEND_IMAGE='${{ needs.build-and-push.outputs.frontend-image }}'
+            BACKEND_IMAGE='${{ needs.build-and-push.outputs.backend_image }}'
+            FRONTEND_IMAGE='${{ needs.build-and-push.outputs.frontend_image }}'
+            BACKEND_IMAGE="${BACKEND_IMAGE:-${ECR_REGISTRY}/${{ env.ECR_REPO }}:backend-latest}"
+            FRONTEND_IMAGE="${FRONTEND_IMAGE:-${ECR_REGISTRY}/${{ env.ECR_REPO }}:frontend-latest}"
+
+            if [ -z "$BACKEND_IMAGE" ] || [ -z "$FRONTEND_IMAGE" ]; then
+              echo "Image references must not be empty"
+              exit 1
+            fi
 
             if [ ! -d "$APP_DIR/.git" ]; then
               rm -rf "$APP_DIR"
