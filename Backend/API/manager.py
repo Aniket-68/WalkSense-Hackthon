@@ -3,22 +3,25 @@ SystemManager: Thread-safe singleton that owns the WalkSense processing pipeline
 Replaces the OpenCV main loop from run_enhanced_camera.py with a headless server-side loop.
 """
 
-import sys
 import os
-
-# Add Inference folder to path for imports
-backend_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-inference_path = os.path.join(backend_root, 'Inference')
-sys.path.insert(0, inference_path)
 
 import cv2
 import time
 import threading
 import queue
 from collections import deque
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 from loguru import logger
-from dataclasses import dataclass, field
+
+
+def _ensure_inference_path() -> None:
+    """Ensure Backend/Inference is importable for layer modules."""
+    import sys
+
+    backend_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    inference_path = os.path.join(backend_root, "Inference")
+    if inference_path not in sys.path:
+        sys.path.insert(0, inference_path)
 
 
 def _bool_env(name: str, default: bool) -> bool:
@@ -30,7 +33,7 @@ def _bool_env(name: str, default: bool) -> bool:
 
 class SystemManager:
     """Central manager for the WalkSense processing pipeline.
-    
+
     Runs the camera → YOLO → safety → VLM → LLM pipeline in a background thread
     and exposes state via get_state() for the WebSocket API.
     """
@@ -88,6 +91,7 @@ class SystemManager:
         # Browser camera frame queue (for camera.mode = "browser")
         self._browser_frame_queue: queue.Queue = queue.Queue(maxsize=2)
         # Read camera mode early so get_state() reports correctly before start
+        _ensure_inference_path()
         from Infrastructure.config import Config
         self._camera_mode = Config.get("camera.mode", "hardware")
 
@@ -124,6 +128,7 @@ class SystemManager:
 
     def _init_components(self):
         """Lazy-initialize all pipeline components."""
+        _ensure_inference_path()
         import os
         from Infrastructure.config import Config
         from Perception_Layer.camera import Camera
@@ -313,7 +318,7 @@ class SystemManager:
             model_dir = os.path.join(project_root, "Models", "stt")
 
             logger.info(f"[STT] Pre-loading Whisper model '{model_size}' on {device}...")
-            
+
             # ENFORCE GPU - No CPU fallback
             if device == "cuda":
                 try:
@@ -329,7 +334,7 @@ class SystemManager:
                     logger.error(f"[STT] ✗ CUDA REQUIRED but failed: {e}")
                     logger.error("[STT] ═══════════════════════════════════════")
                     logger.error("[STT] GPU ENFORCEMENT: Install CUDA PyTorch:")
-                    logger.error("[STT] pip uninstall torch torchvision torchaudio")  
+                    logger.error("[STT] pip uninstall torch torchvision torchaudio")
                     logger.error("[STT] pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121")
                     logger.error("[STT] ═══════════════════════════════════════")
                     raise RuntimeError(f"CUDA required but unavailable: {e}")
@@ -345,7 +350,7 @@ class SystemManager:
                 logger.info(f"[STT] Faster-Whisper loaded on CPU ({model_size}) - GPU disabled by config")
             else:
                 raise ValueError(f"Invalid device: {device}")
-                
+
         except Exception as e:
             logger.error(f"[STT] Pre-load failed: {e}")
             self._whisper_model = None
@@ -572,7 +577,7 @@ class SystemManager:
             try:
                 start = time.time()
                 logger.debug(f"[STT] Calling transcribe on temp file: {temp_path}")
-                
+
                 if self._whisper_backend == "faster_whisper":
                     logger.debug("[STT] Using faster-whisper backend")
                     segments, info = self._whisper_model.transcribe(
@@ -604,7 +609,7 @@ class SystemManager:
             logger.error(f"[STT] Transcription failed: {e}")
             import traceback
             logger.error(f"[STT] Full traceback: {traceback.format_exc()}")
-            
+
             # NO CPU FALLBACK - Enforce GPU usage
             if "cublas" in str(e) or "cuda" in str(e).lower():
                 logger.error("[STT] ═══════════════════════════════════════")
@@ -674,24 +679,19 @@ class SystemManager:
             cutoff = now - self._tts_window
             self._tts_buffer = [u for u in self._tts_buffer if u["ts"] >= cutoff]
 
-        use_browser = False
         use_server_audio = False
         use_local = False
 
-        if mode == "browser":
-            use_browser = True
-        elif mode == "server":
+        if mode == "server":
             use_server_audio = True
         elif mode == "hybrid":
             # Fast browser TTS for safety-critical, server audio for longer responses
             if priority in ("critical", "warning"):
-                use_browser = True
+                pass
             else:
                 use_server_audio = True
         elif mode == "local":
             use_local = True
-        else:
-            use_browser = True  # safe default
 
         # Server-side audio synthesis → queue bytes for /ws/audio
         if use_server_audio and self._tts:
@@ -1090,7 +1090,7 @@ class _QwenWorker:
     def process(self, frame, context_str: str) -> bool:
         if not self.is_busy and self.input_queue.empty():
             self.input_queue.put((frame.copy(), context_str))
-            logger.debug(f"[VLM] Frame submitted to worker queue")
+            logger.debug("[VLM] Frame submitted to worker queue")
             return True
         return False
 

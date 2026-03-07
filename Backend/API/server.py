@@ -8,14 +8,8 @@ Run with:
 
 import asyncio
 import time
-import sys
 import os
 from contextlib import asynccontextmanager
-
-from API.env_loader import bootstrap_environment
-
-# Resolve env/secrets before importing auth/database modules that snapshot env values.
-bootstrap_environment()
 
 from fastapi import (
     FastAPI,
@@ -35,11 +29,13 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from loguru import logger
 
-# Ensure backend root is on the path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from API.env_loader import bootstrap_environment
 
-from API.manager import SystemManager
-from API.auth import (
+# Resolve env/secrets before importing auth/database modules that snapshot env values.
+bootstrap_environment()
+
+from API.manager import SystemManager  # noqa: E402
+from API.auth import (  # noqa: E402
     AUTH_CLEANUP_INTERVAL_SECONDS,
     AUTH_HOUSEKEEPING_ENABLED,
     AuthError,
@@ -65,8 +61,8 @@ from API.auth import (
 )
 
 # MongoDB auth models
-from API.database import get_database, ensure_indexes, close_database
-from API.models import (
+from API.database import ensure_indexes, close_database  # noqa: E402
+from API.models import (  # noqa: E402
     RegisterRequest as MongoRegisterRequest,
     LoginRequest as MongoLoginRequest,
     create_user,
@@ -74,18 +70,13 @@ from API.models import (
 )
 
 # Prometheus metrics
-from API.metrics import (
+from API.metrics import (  # noqa: E402
     http_requests_total,
     http_request_duration,
-    active_ws_connections,
-    auth_logins_total,
-    auth_registrations_total,
-    queries_total,
-    frame_queue_size,
     render_metrics,
 )
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request as StarletteRequest
+from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
+from starlette.requests import Request as StarletteRequest  # noqa: E402
 
 # ──────────────────────────────────────────────
 # App
@@ -272,9 +263,9 @@ async def health_check():
 @app.get("/metrics", include_in_schema=False)
 async def prometheus_metrics():
     """Prometheus scrape endpoint."""
-    from API.metrics import frame_queue_size
     # Update frame queue gauge on each scrape
     try:
+        from API.metrics import frame_queue_size
         frame_queue_size.set(manager._browser_frame_queue.qsize())
     except Exception:
         pass
@@ -364,13 +355,6 @@ async def auth_login(req: MongoLoginRequest, request: Request):
     except AuthError as e:
         register_rate_limit_failure("login", rate_id, ip=client_ip, reason=e.message)
         return JSONResponse({"detail": e.message}, status_code=e.status_code)
-
-    # Enrich user info with MongoDB fields
-    user_response = {
-        **token_bundle["user"],
-        "email": user_doc.get("email", ""),
-        "username": user_doc.get("username", ""),
-    }
 
     return _auth_success_response(
         token_bundle,
@@ -649,7 +633,6 @@ def _find_ffmpeg():
     if ffmpeg:
         return ffmpeg
     # Refresh PATH from system environment (winget installs update registry but not current process)
-    system_path = os.environ.get("Path", "")
     fresh_path = os.pathsep.join([
         os.environ.get("SystemRoot", r"C:\Windows") + r"\system32",
         os.environ.get("SystemRoot", r"C:\Windows"),
@@ -694,7 +677,7 @@ def _process_voice_audio(audio_bytes: bytes, content_type: str) -> Optional[str]
                 logger.error("  2. Add to system PATH")
                 logger.error("  3. Or install via: winget install FFmpeg")
                 raise FileNotFoundError("FFmpeg is required but not installed. Please install FFmpeg and add it to your system PATH.")
-                
+
             # -af "adelay=500|500" pads 500ms silence at the start so
             # Whisper doesn't clip the first word (browser MediaRecorder
             # often loses the first ~200-400ms of audio)
