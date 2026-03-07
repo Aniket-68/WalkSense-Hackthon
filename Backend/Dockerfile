@@ -7,10 +7,10 @@ ENV APP_ENV=${APP_ENV}
 
 # System dependencies for OpenCV headless
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libglib2.0-0 libgl1-mesa-glx curl \
+    libglib2.0-0 libgl1 curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies (server-only layer — cached separately)
+# Install Python dependencies (server-only layer; cache-friendly)
 COPY requirements-server.txt .
 RUN pip install --no-cache-dir -r requirements-server.txt \
     && pip install --no-cache-dir prometheus-client prometheus-fastapi-instrumentator \
