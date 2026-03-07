@@ -141,6 +141,10 @@ jobs:
             aws ecr get-login-password --region "$AWS_REGION" \
               | docker login --username AWS --password-stdin "$ECR_REGISTRY"
 
+            # Free disk before pulling large images (OpenCV/ML layers are heavy).
+            docker compose -f deploy/ec2/docker-compose.ec2.yml down --remove-orphans || true
+            docker system prune -af --volumes || true
+
             docker pull "$BACKEND_IMAGE"
             docker pull "$FRONTEND_IMAGE"
 
