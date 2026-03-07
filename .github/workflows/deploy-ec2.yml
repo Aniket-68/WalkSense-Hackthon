@@ -132,6 +132,12 @@ jobs:
             git checkout "$BRANCH"
             git reset --hard "origin/$BRANCH"
 
+            # Compose requires deploy/ec2/.env via env_file; create a placeholder when absent.
+            mkdir -p deploy/ec2
+            if [ ! -f deploy/ec2/.env ]; then
+              touch deploy/ec2/.env
+            fi
+
             aws ecr get-login-password --region "$AWS_REGION" \
               | docker login --username AWS --password-stdin "$ECR_REGISTRY"
 
