@@ -44,6 +44,43 @@ app.add_middleware(
 
 manager = SystemManager()
 
+# ──────────────────────────────────────────────
+# Auto-Shutdown Monitor (Cost Optimization)
+# ──────────────────────────────────────────────
+import threading
+import os
+
+# Initialize to boot time
+last_activity_time = time.time()
+connected_clients: set[WebSocket] = set()
+
+def auto_shutdown_monitor():
+    """Shuts down the EC2 instance after 15 minutes of zero connected frontend clients."""
+    from Infrastructure.config import Config
+    global last_activity_time
+    
+    # Check config.json for the server.inactivity_timeout key
+    INACTIVITY_TIMEOUT = Config.get("server.inactivity_timeout", 900)
+    
+    while True:
+        time.sleep(60) # Check every 60 seconds
+        
+        
+        # If there are active websocket clients connecting to the frontend, reset timer
+        if len(connected_clients) > 0:
+            last_activity_time = time.time()
+        else:
+            # Check how long it has been since the last client disconnected
+            elapsed = time.time() - last_activity_time
+            if elapsed > INACTIVITY_TIMEOUT:
+                logger.warning(f"[Cost-Optimizer] No frontend clients for {INACTIVITY_TIMEOUT/60} minutes. Issuing EC2 shutdown.")
+                # This stops the EC2 instance (assuming Shutdown Behavior = Stop)
+                os.system("sudo shutdown -h now")
+
+# Kick off the monitor thread immediately in the background
+threading.Thread(target=auto_shutdown_monitor, daemon=True).start()
+
+
 
 # ──────────────────────────────────────────────
 # Schemas
@@ -301,9 +338,6 @@ async def audio_ws(ws: WebSocket):
 # ──────────────────────────────────────────────
 # WebSocket — Real-time state push
 # ──────────────────────────────────────────────
-
-connected_clients: set[WebSocket] = set()
-
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
