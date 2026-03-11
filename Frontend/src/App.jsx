@@ -36,6 +36,12 @@ function App() {
 
   const handleStartStop = async () => {
     if (isTransitioning) return;
+
+    if (!connected) {
+      alert("⚠️ The backend is currently disconnected to save costs.\n\nPlease click on the green 'Start AI Server' button in the camera view to start the EC2 instance first.");
+      return;
+    }
+
     // Any click is a user gesture — unlock audio if not already permitted
     if (!audioPermitted) requestAudio();
     try {
@@ -166,7 +172,7 @@ function App() {
         {/* Left: Camera */}
         <div className="left-panel">
           <div className="camera-stack">
-            <CameraFeed state={state} />
+            <CameraFeed state={state} connected={connected} />
             <div className="mobile-pipeline-overlay">
               <PipelineMonitor state={state} variant="compact" />
             </div>
