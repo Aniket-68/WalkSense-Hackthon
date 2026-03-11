@@ -1,4 +1,7 @@
 {
+  "server": {
+    "inactivity_timeout": 900
+  },
   "vlm": {
     "active_provider": "local",
     "providers": {
@@ -352,7 +355,7 @@
     }
   },
   "detector": {
-    "active_model": "yolo11x",
+    "active_model": "yolo11m",
     "models": {
       "yolov8n": "Models/yolo/yolov8n.pt",
       "yolo11m": "Models/yolo/yolo11m.pt",
