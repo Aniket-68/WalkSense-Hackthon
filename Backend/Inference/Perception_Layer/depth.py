@@ -84,12 +84,36 @@ class DepthEstimator:
         """Load the depth model and processor from HuggingFace or local dir."""
         try:
             from transformers import AutoImageProcessor, AutoModelForDepthEstimation
+            import json
 
             source = str(self.local_dir) if (self.local_dir and self.local_dir.exists() and any(self.local_dir.iterdir())) else self.model_id
 
             logger.info(f"[DEPTH] Loading model from: {source}")
+            
+            # HOTFIX: transformers save_pretrained sometimes omits model_type for DPT/DepthAnything
+            if source == str(self.local_dir):
+                config_path = self.local_dir / "config.json"
+                if config_path.exists():
+                    with open(config_path, "r") as f:
+                        config_data = json.load(f)
+                    
+                    needs_save = False
+                    if "model_type" not in config_data:
+                        needs_save = True
+                        if "dpt" in self.model_id.lower() or "midas" in self.model_id.lower():
+                            config_data["model_type"] = "dpt"
+                        elif "depth-anything" in self.model_id.lower():
+                            config_data["model_type"] = "depth_anything"
+                            
+                    if needs_save:
+                        with open(config_path, "w") as f:
+                            json.dump(config_data, f, indent=2)
+
             self.processor = AutoImageProcessor.from_pretrained(source)
-            self.model = AutoModelForDepthEstimation.from_pretrained(source).to(self.device)
+            self.model = AutoModelForDepthEstimation.from_pretrained(
+                source, 
+                trust_remote_code=True
+            ).to(self.device)
             self.model.eval()
             logger.info(f"[DEPTH] Model loaded on {self.device}")
 

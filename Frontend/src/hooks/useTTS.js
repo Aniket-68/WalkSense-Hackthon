@@ -78,10 +78,14 @@ export function useTTS(state, { enabled = true, audioPermitted = true } = {}) {
       utterance.lang = "en-US";
 
       const voices = speechSynthesis.getVoices();
+      
+      const PREFERRED_VOICES = ["Google US English", "Google UK English Female", "Samantha", "Daniel", "Zira"];
       const preferred =
+        voices.find((v) => PREFERRED_VOICES.some(name => v.name.includes(name))) ||
         voices.find((v) => v.lang.startsWith("en") && v.default) ||
         voices.find((v) => v.lang.startsWith("en")) ||
         voices[0];
+        
       if (preferred) utterance.voice = preferred;
 
       utterance.onerror = (e) =>

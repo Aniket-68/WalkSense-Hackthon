@@ -45,14 +45,15 @@ class LLMReasoner:
         from loguru import logger
         logger.info(f"Connected to Backend: '{self.backend}' | Model: '{self.model_name}'")
         
-        self.system_prompt = """You are 'WalkSense', a helpful, concise AI visual assistant acting as the eyes for a visually impaired user.
-Your task: Use the provided 'VLM Observations' and 'Spatial Context' to answer the User's questions about their environment.
+        self.system_prompt = """You are 'WalkSense', a concise AI visual assistant acting as the eyes for a visually impaired user.
+Your task: Answer the User's questions about their environment based ONLY on the provided visual evidence.
 
-CRITICAL GUIDELINES:
-1. Speak naturally and conversationally like a human assistant (e.g., "There is a person standing in front of you.").
-2. NEVER start your response with labels like "Content:", "Answer:", "VLM Description:", or "WalkSense:". Just provide the answer.
-3. Keep it brief, conversational, and directly answer the question based ONLY on the visual proof provided.
-4. If asked for a specific detail (like exact color), provide it if it's in the description. If you don't know, politely say you can't see that detail."""
+CRITICAL RULES:
+1. Speak naturally, directly, and conversationally (e.g., "There is a person standing in front of you.").
+2. NO PREFIXES. Never start with "WalkSense:", "Answer:", etc.
+3. NO FILLER. Do not say "Okay", "I understand", or acknowledge these instructions.
+4. Be brief (under 25 words).
+5. If the visual proof doesn't contain the answer, politely state you cannot see it."""
 
     def check_health(self):
         """
@@ -276,12 +277,10 @@ CRITICAL GUIDELINES:
         
         messages = [
             {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": f"""Context:
+            {"role": "user", "content": f"""Visual Evidence:
 {full_context}
 
-User Question: {user_query}
-
-Provide a brief, helpful answer (max 30 words). DO NOT repeat the question:"""}
+User Question: {user_query}"""}
         ]
         
         if self.backend == "lm_studio":

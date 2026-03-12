@@ -747,10 +747,11 @@ class SystemManager:
                         logger.info(f"[Pipeline] VLM description ({duration:.1f}s): {new_desc[:100]}")
 
                         if self._current_query:
-                            # Submit VLM-grounded LLM query (non-blocking)
-                            self._llm_worker.process_vlm_query(new_desc)
-                            self._pipeline_state["llm"]["active"] = True
-                            self._pipeline_state["llm"]["is_processing"] = True
+                            # Submit VLM-grounded LLM query (non-blocking) ONLY if not already processing
+                            if not self._pipeline_state["llm"]["is_processing"]:
+                                if self._llm_worker.process_vlm_query(new_desc):
+                                    self._pipeline_state["llm"]["active"] = True
+                                    self._pipeline_state["llm"]["is_processing"] = True
                         else:
                             self._fusion.handle_scene_description(new_desc)
 
