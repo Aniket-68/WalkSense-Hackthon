@@ -11,6 +11,10 @@ export default function SystemControls({ state, connected = false, onStartStop }
   const isMuted = state?.muted || false;
 
   const handleToggle = async () => {
+    if (!connected) {
+      if (onStartStop) onStartStop();
+      return;
+    }
     if (isTransitioning) return;
     setLoading(true);
     try {
@@ -25,6 +29,10 @@ export default function SystemControls({ state, connected = false, onStartStop }
   };
 
   const handleMute = async () => {
+    if (!connected) {
+      alert("⚠️ The backend is currently disconnected to save costs.\n\nPlease click on the green 'Start AI Server' button in the camera view to start the EC2 instance first.");
+      return;
+    }
     try {
       await fetch(`${API_BASE}/api/system/mute`, { method: "POST" });
     } catch (err) {
@@ -91,8 +99,9 @@ export default function SystemControls({ state, connected = false, onStartStop }
       <button
         className={`control-btn ${btnClass}`}
         onClick={handleToggle}
-        disabled={!connected || isTransitioning || loading}
-        title={!connected ? "Backend disconnected" : btnLabel}
+        disabled={isTransitioning || loading}
+        style={{ opacity: !connected ? 0.5 : 1, cursor: !connected ? "not-allowed" : "pointer" }}
+        title={!connected ? "Backend disconnected - Start EC2 Instance first" : btnLabel}
       >
         {btnIcon}
         {btnLabel}
@@ -102,8 +111,8 @@ export default function SystemControls({ state, connected = false, onStartStop }
       <button
         className={`control-btn ${isMuted ? "mute-active" : ""}`}
         onClick={handleMute}
-        disabled={!connected}
-        title={!connected ? "Backend disconnected" : (isMuted ? "Unmute Audio" : "Mute Audio")}
+        style={{ opacity: !connected ? 0.5 : 1, cursor: !connected ? "not-allowed" : "pointer" }}
+        title={!connected ? "Backend disconnected - Start EC2 Instance first" : (isMuted ? "Unmute Audio" : "Mute Audio")}
       >
         {isMuted ? (
           <>

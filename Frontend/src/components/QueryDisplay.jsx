@@ -79,6 +79,10 @@ export default function QueryDisplay({ state, authFetch, onVoiceStateChange, con
   }, [micPermission]);
 
   const handleStartRecording = async () => {
+    if (!connected) {
+      alert("⚠️ The backend is currently disconnected to save costs.\n\nPlease click on the green 'Start AI Server' button in the camera view to start the EC2 instance first.");
+      return;
+    }
     setMicError("");
 
     if (!window.isSecureContext) {
@@ -338,8 +342,8 @@ export default function QueryDisplay({ state, authFetch, onVoiceStateChange, con
           <button
             className="voice-btn"
             onClick={handleStartRecording}
-            disabled={!connected}
-            title={!connected ? "Backend disconnected" : "Ask WalkSense"}
+            style={{ opacity: !connected ? 0.5 : 1, cursor: !connected ? "not-allowed" : "pointer" }}
+            title={!connected ? "Backend disconnected - Start EC2 Instance first" : "Ask WalkSense"}
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />

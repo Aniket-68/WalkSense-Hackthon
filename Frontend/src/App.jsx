@@ -53,6 +53,10 @@ function App() {
   };
 
   const handleListen = () => {
+    if (!connected) {
+      alert("⚠️ The backend is currently disconnected to save costs.\n\nPlease click on the green 'Start AI Server' button in the camera view to start the EC2 instance first.");
+      return;
+    }
     // Toggle voice recording by clicking the voice button
     const voiceBtn = document.querySelector(".voice-btn");
     if (voiceBtn) {
@@ -61,6 +65,10 @@ function App() {
   };
 
   const handleToggleMute = async () => {
+    if (!connected) {
+      alert("⚠️ The backend is currently disconnected to save costs.\n\nPlease click on the green 'Start AI Server' button in the camera view to start the EC2 instance first.");
+      return;
+    }
     try {
       await fetch(`${API_BASE}/api/system/mute`, { method: "POST" });
     } catch (err) {
