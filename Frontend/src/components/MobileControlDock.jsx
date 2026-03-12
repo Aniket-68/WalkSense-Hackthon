@@ -1,5 +1,6 @@
 export default function MobileControlDock({
   systemStatus = "IDLE",
+  connected = false,
   isMuted = false,
   voiceState = "idle",
   onListen,
@@ -32,7 +33,8 @@ export default function MobileControlDock({
         type="button"
         className={`mobile-dock-btn mobile-dock-side ${isMuted ? "active" : ""}`}
         onClick={onToggleMute}
-        title={isMuted ? "Unmute Audio" : "Mute Audio"}
+        disabled={!connected}
+        title={!connected ? "Backend disconnected" : (isMuted ? "Unmute Audio" : "Mute Audio")}
       >
         {isMuted ? (
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
@@ -50,8 +52,8 @@ export default function MobileControlDock({
         type="button"
         className={`mobile-mic-btn ${voiceState}`}
         onClick={onListen}
-        title={micTitle}
-        disabled={voiceState === "transcribing"}
+        title={!connected ? "Backend disconnected" : micTitle}
+        disabled={!connected || voiceState === "transcribing"}
       >
         {voiceState === "recording" ? (
           <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor">
@@ -82,8 +84,8 @@ export default function MobileControlDock({
         type="button"
         className={`mobile-dock-btn mobile-dock-start ${isRunning ? "stop" : "start"} ${isTransitioning ? "waiting" : ""}`}
         onClick={onStartStop}
-        disabled={isTransitioning}
-        title={startLabel}
+        disabled={!connected || isTransitioning}
+        title={!connected ? "Backend disconnected" : startLabel}
       >
         {isRunning ? (
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { API_BASE } from "../config";
 
-export default function SystemControls({ state, onStartStop }) {
+export default function SystemControls({ state, connected = false, onStartStop }) {
   const [loading, setLoading] = useState(false);
   const systemStatus = state?.system_status || "IDLE";
   const isRunning = systemStatus === "RUNNING";
@@ -91,7 +91,8 @@ export default function SystemControls({ state, onStartStop }) {
       <button
         className={`control-btn ${btnClass}`}
         onClick={handleToggle}
-        disabled={isTransitioning || loading}
+        disabled={!connected || isTransitioning || loading}
+        title={!connected ? "Backend disconnected" : btnLabel}
       >
         {btnIcon}
         {btnLabel}
@@ -101,7 +102,8 @@ export default function SystemControls({ state, onStartStop }) {
       <button
         className={`control-btn ${isMuted ? "mute-active" : ""}`}
         onClick={handleMute}
-        title={isMuted ? "Unmute Audio" : "Mute Audio"}
+        disabled={!connected}
+        title={!connected ? "Backend disconnected" : (isMuted ? "Unmute Audio" : "Mute Audio")}
       >
         {isMuted ? (
           <>

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { API_BASE } from "../config";
 
-export default function QueryDisplay({ state, authFetch, onVoiceStateChange }) {
+export default function QueryDisplay({ state, authFetch, onVoiceStateChange, connected = false }) {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [micError, setMicError] = useState("");
@@ -338,7 +338,8 @@ export default function QueryDisplay({ state, authFetch, onVoiceStateChange }) {
           <button
             className="voice-btn"
             onClick={handleStartRecording}
-            title="Ask WalkSense"
+            disabled={!connected}
+            title={!connected ? "Backend disconnected" : "Ask WalkSense"}
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />

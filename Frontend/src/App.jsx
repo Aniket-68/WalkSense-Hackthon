@@ -181,11 +181,11 @@ function App() {
 
         {/* Right: Dialogue + Controls */}
         <div className="right-panel">
-          <QueryDisplay state={state} onVoiceStateChange={setVoiceState} />
+          <QueryDisplay state={state} onVoiceStateChange={setVoiceState} connected={connected} />
           <div className="mobile-inline-pipeline">
             <PipelineMonitor state={state} variant="compact" />
           </div>
-          <SystemControls state={state} onStartStop={handleStartStop} />
+          <SystemControls state={state} connected={connected} onStartStop={handleStartStop} />
         </div>
       </main>
 
@@ -197,6 +197,7 @@ function App() {
       {/* ─── Mobile Control Dock ─── */}
       <MobileControlDock
         systemStatus={systemStatus}
+        connected={connected}
         isMuted={state?.muted || false}
         voiceState={voiceState}
         onStartStop={handleStartStop}
