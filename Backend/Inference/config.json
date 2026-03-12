@@ -1,6 +1,6 @@
 {
   "server": {
-    "inactivity_timeout": 900
+    "inactivity_timeout": 300
   },
   "vlm": {
     "active_provider": "local",
