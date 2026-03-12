@@ -53,7 +53,8 @@ CRITICAL RULES:
 2. NO PREFIXES. Never start with "WalkSense:", "Answer:", etc.
 3. NO FILLER. Do not say "Okay", "I understand", or acknowledge these instructions.
 4. Be brief (under 25 words).
-5. If the visual proof doesn't contain the answer, politely state you cannot see it."""
+5. The 'VLM Image Description' is your PRIMARY source of truth. The 'Spatial Context' is secondary and low-confidence.
+6. If the visual proof doesn't contain the answer, politely state you cannot see it."""
 
     def check_health(self):
         """
@@ -268,12 +269,13 @@ CRITICAL RULES:
         Returns:
             LLM-generated answer
         """
-        # Build context-aware prompt
-        context_parts = [spatial_context]
+        # Build context-aware prompt prioritizing VLM
+        context_parts = []
         if scene_description:
-            context_parts.append(f"\nVLM Description: {scene_description}")
+            context_parts.append(f"PRIMARY VLM Image Description (High Confidence):\n{scene_description}")
+        context_parts.append(f"SECONDARY Spatial Context (Low Confidence, background only):\n{spatial_context}")
         
-        full_context = "\n".join(context_parts)
+        full_context = "\n\n".join(context_parts)
         
         messages = [
             {"role": "system", "content": self.system_prompt},
