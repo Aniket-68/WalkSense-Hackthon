@@ -730,8 +730,7 @@ class SystemManager:
                         })
                         self._pipeline_state["tts"]["active"] = True
                         self._pipeline_state["tts"]["is_speaking"] = True
-                        # Emit to remote clients
-                        self.emit_tts(answer, priority="response")
+                        # Note: emit_tts is already handled by FusionEngine's router
 
                     self._current_query = None
 

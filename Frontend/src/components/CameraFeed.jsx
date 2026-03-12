@@ -109,21 +109,10 @@ export default function CameraFeed({ state, connected, accessToken }) {
           </div>
 
           {/* Bottom description */}
-          {(description || spatialSummary) && (
+          {description && (
             <div className="scene-description">
-              {spatialSummary && <div className="label">Spatial Sense</div>}
-              {spatialSummary && (
-                <div
-                  style={{
-                    marginBottom: 4,
-                    fontSize: "0.75rem",
-                    color: "var(--text-secondary)",
-                  }}
-                >
-                  {spatialSummary}
-                </div>
-              )}
-              {description && <div>{description}</div>}
+              <div className="label">WalkSense Vision</div>
+              <div>{description}</div>
             </div>
           )}
         </>
