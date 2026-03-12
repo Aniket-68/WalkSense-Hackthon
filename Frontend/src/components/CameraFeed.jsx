@@ -69,7 +69,7 @@ export default function CameraFeed({ state, connected, accessToken }) {
                   
                   {showTooltip && (
                     <div style={{ position: "absolute", bottom: "115%", left: "50%", transform: "translateX(-50%)", background: "#333", color: "#fff", padding: "10px 14px", borderRadius: "6px", fontSize: "14px", whiteSpace: "nowrap", pointerEvents: "none", boxShadow: "0 4px 12px rgba(0,0,0,0.5)", width: "300px", textAlign: "center" }}>
-                      Start the backend EC2 instance. It will automatically stop after 15 minutes of inactivity.
+                      Start the backend EC2 instance. It will automatically stop after 5 minutes of inactivity.
                       <div style={{ position: "absolute", bottom: "-6px", left: "50%", transform: "translateX(-50%)", borderLeft: "6px solid transparent", borderRight: "6px solid transparent", borderTop: "6px solid #333" }} />
                     </div>
                   )}
@@ -129,6 +129,11 @@ export default function CameraFeed({ state, connected, accessToken }) {
           <p>
             Camera feed offline — press <strong>Start</strong> to begin
           </p>
+          {(state?.shutdown_remaining != null) && (
+            <p style={{ marginTop: 15, color: "var(--accent-red)", fontWeight: "500", fontSize: "0.9em" }}>
+              ⚠️ EC2 Server turning off in {Math.floor(state.shutdown_remaining / 60)}:{(state.shutdown_remaining % 60).toString().padStart(2, "0")} to save cost.
+            </p>
+          )}
         </div>
       )}
     </div>

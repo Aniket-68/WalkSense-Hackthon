@@ -436,6 +436,10 @@ class SystemManager:
             tts_queue = [{"text": u["text"], "seq": u["seq"], "priority": u["priority"]}
                          for u in self._tts_buffer]
 
+        shutdown_remaining = None
+        if getattr(self, "shutdown_at", None):
+            shutdown_remaining = max(0, int(self.shutdown_at - time.time()))
+
         return {
             "system_status": self._system_status,
             "camera_mode": self._camera_mode or "hardware",
@@ -448,6 +452,7 @@ class SystemManager:
             "current_response": self._current_response,
             "dialogue_history": self._dialogue_history[-20:],  # last 20
             "muted": self._muted,
+            "shutdown_remaining": shutdown_remaining
         }
 
     # ------------------------------------------------------------------
