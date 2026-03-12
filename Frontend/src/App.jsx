@@ -36,6 +36,12 @@ function App() {
 
   const handleStartStop = async () => {
     if (isTransitioning) return;
+
+    if (!connected) {
+      alert("⚠️ The backend is currently disconnected to save costs.\n\nPlease click on the green 'Start AI Server' button in the camera view to start the EC2 instance first.");
+      return;
+    }
+
     // Any click is a user gesture — unlock audio if not already permitted
     if (!audioPermitted) requestAudio();
     try {
@@ -47,6 +53,10 @@ function App() {
   };
 
   const handleListen = () => {
+    if (!connected) {
+      alert("⚠️ The backend is currently disconnected to save costs.\n\nPlease click on the green 'Start AI Server' button in the camera view to start the EC2 instance first.");
+      return;
+    }
     // Toggle voice recording by clicking the voice button
     const voiceBtn = document.querySelector(".voice-btn");
     if (voiceBtn) {
@@ -55,6 +65,10 @@ function App() {
   };
 
   const handleToggleMute = async () => {
+    if (!connected) {
+      alert("⚠️ The backend is currently disconnected to save costs.\n\nPlease click on the green 'Start AI Server' button in the camera view to start the EC2 instance first.");
+      return;
+    }
     try {
       await fetch(`${API_BASE}/api/system/mute`, { method: "POST" });
     } catch (err) {
@@ -166,7 +180,7 @@ function App() {
         {/* Left: Camera */}
         <div className="left-panel">
           <div className="camera-stack">
-            <CameraFeed state={state} />
+            <CameraFeed state={state} connected={connected} />
             <div className="mobile-pipeline-overlay">
               <PipelineMonitor state={state} variant="compact" />
             </div>
@@ -175,11 +189,11 @@ function App() {
 
         {/* Right: Dialogue + Controls */}
         <div className="right-panel">
-          <QueryDisplay state={state} onVoiceStateChange={setVoiceState} />
+          <QueryDisplay state={state} onVoiceStateChange={setVoiceState} connected={connected} />
           <div className="mobile-inline-pipeline">
             <PipelineMonitor state={state} variant="compact" />
           </div>
-          <SystemControls state={state} onStartStop={handleStartStop} />
+          <SystemControls state={state} connected={connected} onStartStop={handleStartStop} />
         </div>
       </main>
 
@@ -191,6 +205,7 @@ function App() {
       {/* ─── Mobile Control Dock ─── */}
       <MobileControlDock
         systemStatus={systemStatus}
+        connected={connected}
         isMuted={state?.muted || false}
         voiceState={voiceState}
         onStartStop={handleStartStop}

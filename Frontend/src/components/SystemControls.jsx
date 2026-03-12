@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { API_BASE } from "../config";
 
-export default function SystemControls({ state, onStartStop }) {
+export default function SystemControls({ state, connected = false, onStartStop }) {
   const [loading, setLoading] = useState(false);
   const systemStatus = state?.system_status || "IDLE";
   const isRunning = systemStatus === "RUNNING";
@@ -11,6 +11,10 @@ export default function SystemControls({ state, onStartStop }) {
   const isMuted = state?.muted || false;
 
   const handleToggle = async () => {
+    if (!connected) {
+      if (onStartStop) onStartStop();
+      return;
+    }
     if (isTransitioning) return;
     setLoading(true);
     try {
@@ -25,6 +29,10 @@ export default function SystemControls({ state, onStartStop }) {
   };
 
   const handleMute = async () => {
+    if (!connected) {
+      alert("⚠️ The backend is currently disconnected to save costs.\n\nPlease click on the green 'Start AI Server' button in the camera view to start the EC2 instance first.");
+      return;
+    }
     try {
       await fetch(`${API_BASE}/api/system/mute`, { method: "POST" });
     } catch (err) {
@@ -92,6 +100,8 @@ export default function SystemControls({ state, onStartStop }) {
         className={`control-btn ${btnClass}`}
         onClick={handleToggle}
         disabled={isTransitioning || loading}
+        style={{ opacity: !connected ? 0.5 : 1, cursor: !connected ? "not-allowed" : "pointer" }}
+        title={!connected ? "Backend disconnected - Start EC2 Instance first" : btnLabel}
       >
         {btnIcon}
         {btnLabel}
@@ -101,7 +111,8 @@ export default function SystemControls({ state, onStartStop }) {
       <button
         className={`control-btn ${isMuted ? "mute-active" : ""}`}
         onClick={handleMute}
-        title={isMuted ? "Unmute Audio" : "Mute Audio"}
+        style={{ opacity: !connected ? 0.5 : 1, cursor: !connected ? "not-allowed" : "pointer" }}
+        title={!connected ? "Backend disconnected - Start EC2 Instance first" : (isMuted ? "Unmute Audio" : "Mute Audio")}
       >
         {isMuted ? (
           <>

@@ -3,6 +3,9 @@
 # ===============================
 # FFmpeg (for audio processing): winget install FFmpeg
 # OR download from: https://ffmpeg.org/download.html
+#
+# eSpeak (required for pyttsx3 on Linux):
+# sudo apt install -y espeak-ng
 
 # ===============================
 # Core ML / Deep Learning (CUDA 12.1)

@@ -1,5 +1,6 @@
 export default function MobileControlDock({
   systemStatus = "IDLE",
+  connected = false,
   isMuted = false,
   voiceState = "idle",
   onListen,
@@ -32,7 +33,8 @@ export default function MobileControlDock({
         type="button"
         className={`mobile-dock-btn mobile-dock-side ${isMuted ? "active" : ""}`}
         onClick={onToggleMute}
-        title={isMuted ? "Unmute Audio" : "Mute Audio"}
+        style={{ opacity: !connected ? 0.5 : 1 }}
+        title={!connected ? "Backend disconnected - Start EC2 Instance first" : (isMuted ? "Unmute Audio" : "Mute Audio")}
       >
         {isMuted ? (
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
@@ -50,8 +52,9 @@ export default function MobileControlDock({
         type="button"
         className={`mobile-mic-btn ${voiceState}`}
         onClick={onListen}
-        title={micTitle}
+        title={!connected ? "Backend disconnected - Start EC2 Instance first" : micTitle}
         disabled={voiceState === "transcribing"}
+        style={{ opacity: !connected ? 0.5 : 1 }}
       >
         {voiceState === "recording" ? (
           <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor">
@@ -83,7 +86,8 @@ export default function MobileControlDock({
         className={`mobile-dock-btn mobile-dock-start ${isRunning ? "stop" : "start"} ${isTransitioning ? "waiting" : ""}`}
         onClick={onStartStop}
         disabled={isTransitioning}
-        title={startLabel}
+        style={{ opacity: !connected ? 0.5 : 1 }}
+        title={!connected ? "Backend disconnected - Start EC2 Instance first" : startLabel}
       >
         {isRunning ? (
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">

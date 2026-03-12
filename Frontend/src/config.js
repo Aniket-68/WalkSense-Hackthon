@@ -55,4 +55,4 @@ export function buildCameraFeedUrl(_accessToken) {
 
 // Camera source mode: "backend" (server camera/MJPEG) or "browser" (getUserMedia → WS)
 export const CAMERA_MODE =
-  import.meta.env.VITE_CAMERA_MODE || "backend";
+  import.meta.env.VITE_CAMERA_MODE || "browser";
